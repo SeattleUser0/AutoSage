@@ -1,7 +1,43 @@
+import Foundation
 import XCTest
 @testable import AutoSageCore
 
 final class AutoSageCoreTests: XCTestCase {
+    func testRequestIDGeneratorFormatsAndIncrements() {
+        let generator = RequestIDGenerator()
+        XCTAssertEqual(generator.nextResponseID(), "resp_0001")
+        XCTAssertEqual(generator.nextResponseID(), "resp_0002")
+        XCTAssertEqual(generator.nextChatCompletionID(), "chatcmpl_0001")
+        XCTAssertEqual(generator.nextChatCompletionID(), "chatcmpl_0002")
+        XCTAssertEqual(generator.nextToolCallID(), "call_0001")
+        XCTAssertEqual(generator.nextToolCallID(), "call_0002")
+    }
+
+    func testRequestIDGeneratorProducesUniqueIDsAcrossConcurrentCalls() {
+        let generator = RequestIDGenerator()
+        let lock = NSLock()
+        let group = DispatchGroup()
+        let queue = DispatchQueue.global(qos: .userInitiated)
+        var ids: [String] = []
+        let iterations = 200
+
+        for _ in 0..<iterations {
+            group.enter()
+            queue.async {
+                let id = generator.nextResponseID()
+                lock.lock()
+                ids.append(id)
+                lock.unlock()
+                group.leave()
+            }
+        }
+
+        group.wait()
+        XCTAssertEqual(ids.count, iterations)
+        XCTAssertEqual(Set(ids).count, iterations)
+        XCTAssertTrue(ids.allSatisfy { $0.hasPrefix("resp_") })
+    }
+
     func testResponsesRequestRoundTrip() throws {
         let request = ResponsesRequest(
             model: "autosage-0.1",
@@ -69,6 +105,38 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertEqual(decoded.status, "ok")
         XCTAssertEqual(decoded.name, "AutoSage")
         XCTAssertEqual(decoded.version, "0.1.0")
+    }
+
+    func testResponsesHandlerUsesIncrementingResponseIDs() throws {
+        let router = Router()
+        let body = Data("{}".utf8)
+
+        let first = router.handle(HTTPRequest(method: "POST", path: "/v1/responses", body: body))
+        XCTAssertEqual(first.status, 200)
+        let firstDecoded = try JSONDecoder().decode(ResponsesResponse.self, from: first.body)
+        XCTAssertEqual(firstDecoded.id, "resp_0001")
+
+        let second = router.handle(HTTPRequest(method: "POST", path: "/v1/responses", body: body))
+        XCTAssertEqual(second.status, 200)
+        let secondDecoded = try JSONDecoder().decode(ResponsesResponse.self, from: second.body)
+        XCTAssertEqual(secondDecoded.id, "resp_0002")
+    }
+
+    func testChatCompletionsHandlerUsesIncrementingChatAndToolCallIDs() throws {
+        let router = Router()
+        let body = Data(#"{"tool_choice":"fea.solve"}"#.utf8)
+
+        let first = router.handle(HTTPRequest(method: "POST", path: "/v1/chat/completions", body: body))
+        XCTAssertEqual(first.status, 200)
+        let firstDecoded = try JSONDecoder().decode(ChatCompletionsResponse.self, from: first.body)
+        XCTAssertEqual(firstDecoded.id, "chatcmpl_0001")
+        XCTAssertEqual(firstDecoded.choices.first?.message.toolCalls?.first?.id, "call_0001")
+
+        let second = router.handle(HTTPRequest(method: "POST", path: "/v1/chat/completions", body: body))
+        XCTAssertEqual(second.status, 200)
+        let secondDecoded = try JSONDecoder().decode(ChatCompletionsResponse.self, from: second.body)
+        XCTAssertEqual(secondDecoded.id, "chatcmpl_0002")
+        XCTAssertEqual(secondDecoded.choices.first?.message.toolCalls?.first?.id, "call_0002")
     }
 
     func testParsePort() {

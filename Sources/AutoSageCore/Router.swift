@@ -26,9 +26,11 @@ public struct HTTPResponse {
 
 public struct Router {
     public let registry: ToolRegistry
+    public let idGenerator: RequestIDGenerator
 
-    public init(registry: ToolRegistry = .default) {
+    public init(registry: ToolRegistry = .default, idGenerator: RequestIDGenerator = RequestIDGenerator()) {
         self.registry = registry
+        self.idGenerator = idGenerator
     }
 
     public func handle(_ request: HTTPRequest) -> HTTPResponse {
@@ -61,7 +63,7 @@ public struct Router {
                     ResponseOutputItem(type: "tool_result", role: nil, content: nil, toolName: toolName, result: result)
                 ]
                 let response = ResponsesResponse(
-                    id: "resp_0001",
+                    id: idGenerator.nextResponseID(),
                     object: "response",
                     model: model,
                     output: output
@@ -77,7 +79,7 @@ public struct Router {
                 result: nil
             )
             let response = ResponsesResponse(
-                id: "resp_0001",
+                id: idGenerator.nextResponseID(),
                 object: "response",
                 model: model,
                 output: [message]
@@ -99,14 +101,14 @@ public struct Router {
             if let toolName = requestedToolName(from: req.toolChoice), let tool = registry.tool(named: toolName) {
                 let result = tool.run(input: nil)
                 let toolCall = ToolCall(
-                    id: "call_0001",
+                    id: idGenerator.nextToolCallID(),
                     type: "function",
                     function: ToolCallFunction(name: toolName, arguments: "{}")
                 )
                 let message = ChatCompletionMessage(role: "assistant", content: "", toolCalls: [toolCall])
                 let choice = ChatChoice(index: 0, message: message, finishReason: "tool_calls")
                 let response = ChatCompletionsResponse(
-                    id: "chatcmpl_0001",
+                    id: idGenerator.nextChatCompletionID(),
                     object: "chat.completion",
                     model: model,
                     choices: [choice],
@@ -118,7 +120,7 @@ public struct Router {
             let message = ChatCompletionMessage(role: "assistant", content: "AutoSage chat stub.", toolCalls: nil)
             let choice = ChatChoice(index: 0, message: message, finishReason: "stop")
             let response = ChatCompletionsResponse(
-                id: "chatcmpl_0001",
+                id: idGenerator.nextChatCompletionID(),
                 object: "chat.completion",
                 model: model,
                 choices: [choice],
