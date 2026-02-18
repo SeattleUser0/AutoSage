@@ -1,0 +1,12 @@
+{
+  "created_at" : 793093683.960176,
+  "error" : {
+    "code" : "solver_error",
+    "message" : "Failed"
+  },
+  "finished_at" : 793093683.960186,
+  "id" : "job_0002",
+  "started_at" : 793093683.960185,
+  "status" : "failed",
+  "tool_name" : "cfd.solve"
+}

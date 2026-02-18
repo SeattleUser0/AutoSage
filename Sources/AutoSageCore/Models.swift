@@ -1,5 +1,25 @@
 import Foundation
 
+public struct AutoSageError: Codable, Equatable, Sendable {
+    public let code: String
+    public let message: String
+    public let details: [String: JSONValue]?
+
+    public init(code: String, message: String, details: [String: JSONValue]? = nil) {
+        self.code = code
+        self.message = message
+        self.details = details
+    }
+}
+
+public struct ErrorResponse: Codable, Equatable {
+    public let error: AutoSageError
+
+    public init(error: AutoSageError) {
+        self.error = error
+    }
+}
+
 public struct HealthResponse: Codable, Equatable {
     public let status: String
     public let name: String
@@ -223,5 +243,35 @@ public struct ChatCompletionsResponse: Codable, Equatable {
         self.model = model
         self.choices = choices
         self.toolResults = toolResults
+    }
+}
+
+public struct CreateJobRequest: Codable, Equatable {
+    public let toolName: String
+    public let input: JSONValue?
+
+    enum CodingKeys: String, CodingKey {
+        case toolName = "tool_name"
+        case input
+    }
+
+    public init(toolName: String, input: JSONValue?) {
+        self.toolName = toolName
+        self.input = input
+    }
+}
+
+public struct CreateJobResponse: Codable, Equatable {
+    public let jobID: String
+    public let status: JobStatus
+
+    enum CodingKeys: String, CodingKey {
+        case jobID = "job_id"
+        case status
+    }
+
+    public init(jobID: String, status: JobStatus) {
+        self.jobID = jobID
+        self.status = status
     }
 }

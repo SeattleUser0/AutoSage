@@ -5,11 +5,18 @@ public final class RequestIDGenerator {
     private var responseCounter: Int
     private var chatCompletionCounter: Int
     private var toolCallCounter: Int
+    private var jobCounter: Int
 
-    public init(responseStart: Int = 0, chatCompletionStart: Int = 0, toolCallStart: Int = 0) {
+    public init(
+        responseStart: Int = 0,
+        chatCompletionStart: Int = 0,
+        toolCallStart: Int = 0,
+        jobStart: Int = 0
+    ) {
         self.responseCounter = responseStart
         self.chatCompletionCounter = chatCompletionStart
         self.toolCallCounter = toolCallStart
+        self.jobCounter = jobStart
     }
 
     public func nextResponseID() -> String {
@@ -31,6 +38,13 @@ public final class RequestIDGenerator {
         defer { lock.unlock() }
         toolCallCounter += 1
         return formattedID(prefix: "call", value: toolCallCounter)
+    }
+
+    public func nextJobID() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        jobCounter += 1
+        return formattedID(prefix: "job", value: jobCounter)
     }
 
     private func formattedID(prefix: String, value: Int) -> String {

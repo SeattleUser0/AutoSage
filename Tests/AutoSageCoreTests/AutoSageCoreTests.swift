@@ -11,6 +11,8 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertEqual(generator.nextChatCompletionID(), "chatcmpl_0002")
         XCTAssertEqual(generator.nextToolCallID(), "call_0001")
         XCTAssertEqual(generator.nextToolCallID(), "call_0002")
+        XCTAssertEqual(generator.nextJobID(), "job_0001")
+        XCTAssertEqual(generator.nextJobID(), "job_0002")
     }
 
     func testRequestIDGeneratorProducesUniqueIDsAcrossConcurrentCalls() {
@@ -109,7 +111,7 @@ final class AutoSageCoreTests: XCTestCase {
 
     func testResponsesHandlerUsesIncrementingResponseIDs() throws {
         let router = Router()
-        let body = Data("{}".utf8)
+        let body = Data(#"{"model":"autosage-0.1"}"#.utf8)
 
         let first = router.handle(HTTPRequest(method: "POST", path: "/v1/responses", body: body))
         XCTAssertEqual(first.status, 200)
@@ -124,7 +126,7 @@ final class AutoSageCoreTests: XCTestCase {
 
     func testChatCompletionsHandlerUsesIncrementingChatAndToolCallIDs() throws {
         let router = Router()
-        let body = Data(#"{"tool_choice":"fea.solve"}"#.utf8)
+        let body = Data(#"{"model":"autosage-0.1","tool_choice":"fea.solve"}"#.utf8)
 
         let first = router.handle(HTTPRequest(method: "POST", path: "/v1/chat/completions", body: body))
         XCTAssertEqual(first.status, 200)
@@ -139,6 +141,36 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertEqual(secondDecoded.choices.first?.message.toolCalls?.first?.id, "call_0002")
     }
 
+    func testResponsesHandlerRejectsInvalidJSON() throws {
+        let router = Router()
+        let response = router.handle(HTTPRequest(method: "POST", path: "/v1/responses", body: Data("{".utf8)))
+        XCTAssertEqual(response.status, 400)
+
+        let decoded = try JSONDecoder().decode(ErrorResponse.self, from: response.body)
+        XCTAssertEqual(decoded.error.code, "invalid_request")
+    }
+
+    func testResponsesHandlerRejectsMissingModel() throws {
+        let router = Router()
+        let response = router.handle(HTTPRequest(method: "POST", path: "/v1/responses", body: Data("{}".utf8)))
+        XCTAssertEqual(response.status, 400)
+
+        let decoded = try JSONDecoder().decode(ErrorResponse.self, from: response.body)
+        XCTAssertEqual(decoded.error.code, "invalid_request")
+        XCTAssertEqual(decoded.error.details?["field"], .string("model"))
+    }
+
+    func testChatCompletionsHandlerRejectsUnknownTool() throws {
+        let router = Router()
+        let body = Data(#"{"model":"autosage-0.1","tool_choice":"does.not.exist"}"#.utf8)
+        let response = router.handle(HTTPRequest(method: "POST", path: "/v1/chat/completions", body: body))
+        XCTAssertEqual(response.status, 400)
+
+        let decoded = try JSONDecoder().decode(ErrorResponse.self, from: response.body)
+        XCTAssertEqual(decoded.error.code, "unknown_tool")
+        XCTAssertEqual(decoded.error.details?["tool_name"], .string("does.not.exist"))
+    }
+
     func testParsePort() {
         XCTAssertNil(parsePort(nil))
         XCTAssertNil(parsePort(""))
@@ -147,5 +179,94 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertNil(parsePort("70000"))
         XCTAssertEqual(parsePort("8081"), 8081)
         XCTAssertEqual(parsePort(" 9090 "), 9090)
+    }
+
+    func testJobStoreLifecycleTransitions() async {
+        let store = JobStore()
+        let created = await store.createJob(toolName: "fea.solve", input: .object(["mesh": .string("m1")]))
+        XCTAssertEqual(created.status, .queued)
+        XCTAssertNil(created.startedAt)
+        XCTAssertNil(created.finishedAt)
+
+        await store.startJob(id: created.id)
+        let running = await store.getJob(id: created.id)
+        XCTAssertEqual(running?.status, .running)
+        XCTAssertNotNil(running?.startedAt)
+
+        let result: JSONValue = .object([
+            "status": .string("ok"),
+            "solver": .string("fea.solve"),
+            "summary": .string("done")
+        ])
+        await store.completeJob(id: created.id, result: result, summary: "done")
+        let finished = await store.getJob(id: created.id)
+        XCTAssertEqual(finished?.status, .succeeded)
+        XCTAssertEqual(finished?.summary, "done")
+        XCTAssertEqual(finished?.result, result)
+        XCTAssertNotNil(finished?.finishedAt)
+
+        let failed = await store.createJob(toolName: "cfd.solve", input: nil)
+        await store.startJob(id: failed.id)
+        await store.failJob(id: failed.id, error: AutoSageError(code: "solver_error", message: "Failed"))
+        let failedRecord = await store.getJob(id: failed.id)
+        XCTAssertEqual(failedRecord?.status, .failed)
+        XCTAssertEqual(failedRecord?.error?.code, "solver_error")
+        XCTAssertNotNil(failedRecord?.finishedAt)
+    }
+
+    func testJobStoreWritesSummaryToRunDirectory() async throws {
+        let fileManager = FileManager.default
+        let tempBase = fileManager.temporaryDirectory.appendingPathComponent("autosage-runs-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: tempBase) }
+
+        let runDirectory = RunDirectory(baseURL: tempBase, fileManager: fileManager)
+        let store = JobStore(runDirectory: runDirectory)
+
+        let job = await store.createJob(toolName: "circuits.simulate", input: .object(["netlist": .string("R1 1 0 100")]))
+        await store.startJob(id: job.id)
+        await store.completeJob(
+            id: job.id,
+            result: .object(["status": .string("ok"), "summary": .string("complete")]),
+            summary: "complete"
+        )
+
+        let summaryURL = tempBase.appendingPathComponent(job.id, isDirectory: true).appendingPathComponent("summary.json")
+        XCTAssertTrue(fileManager.fileExists(atPath: summaryURL.path))
+
+        let data = try Data(contentsOf: summaryURL)
+        let decoded = try JSONDecoder().decode(JobRecord.self, from: data)
+        XCTAssertEqual(decoded.id, job.id)
+        XCTAssertEqual(decoded.status, .succeeded)
+        XCTAssertEqual(decoded.summary, "complete")
+    }
+
+    func testJobsEndpointsCreateAndFetch() throws {
+        let fileManager = FileManager.default
+        let tempBase = fileManager.temporaryDirectory.appendingPathComponent("autosage-endpoint-runs-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: tempBase) }
+        let router = Router(jobStore: JobStore(runDirectory: RunDirectory(baseURL: tempBase, fileManager: fileManager)))
+        let createBody = Data(#"{"tool_name":"fea.solve","input":{"mesh":"beam.msh"}}"#.utf8)
+        let createResponse = router.handle(HTTPRequest(method: "POST", path: "/v1/jobs", body: createBody))
+        XCTAssertEqual(createResponse.status, 200)
+        let created = try JSONDecoder().decode(CreateJobResponse.self, from: createResponse.body)
+        XCTAssertEqual(created.status, .queued)
+        XCTAssertTrue(created.jobID.hasPrefix("job_"))
+
+        var fetched: JobRecord?
+        let deadline = Date().addingTimeInterval(1.0)
+        while Date() < deadline {
+            let getResponse = router.handle(HTTPRequest(method: "GET", path: "/v1/jobs/\(created.jobID)", body: nil))
+            if getResponse.status == 200 {
+                fetched = try JSONDecoder().decode(JobRecord.self, from: getResponse.body)
+                if fetched?.status == .succeeded {
+                    break
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+
+        XCTAssertNotNil(fetched)
+        XCTAssertEqual(fetched?.id, created.jobID)
+        XCTAssertTrue([JobStatus.running, .succeeded].contains(fetched?.status ?? .queued))
     }
 }
