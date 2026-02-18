@@ -74,7 +74,17 @@ Fetch job status/result:
 curl -s http://127.0.0.1:8080/v1/jobs/job_0001
 ```
 
-Job artifacts are written under `./runs/<job_id>/summary.json`.
+Artifacts directory layout under `./runs/<job_id>/`:
+- `request.json` original POST body
+- `summary.json` job summary + status
+- `result.json` tool result on success
+- `error.json` error payload on failure
+
+List artifacts:
+
+```bash
+curl -s http://127.0.0.1:8080/v1/jobs/job_0001/artifacts
+```
 
 ## Error Response Example
 

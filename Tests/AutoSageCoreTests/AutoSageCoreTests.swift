@@ -234,10 +234,72 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: summaryURL.path))
 
         let data = try Data(contentsOf: summaryURL)
-        let decoded = try JSONDecoder().decode(JobRecord.self, from: data)
+        let decoded = try JSONCoding.makeDecoder().decode(JobSummary.self, from: data)
         XCTAssertEqual(decoded.id, job.id)
         XCTAssertEqual(decoded.status, .succeeded)
         XCTAssertEqual(decoded.summary, "complete")
+    }
+
+    func testJobStoreWritesRequestAndSummaryArtifacts() async throws {
+        let fileManager = FileManager.default
+        let tempBase = fileManager.temporaryDirectory.appendingPathComponent("autosage-artifacts-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: tempBase) }
+
+        let runDirectory = RunDirectory(baseURL: tempBase, fileManager: fileManager)
+        let store = JobStore(runDirectory: runDirectory)
+
+        let requestBody = Data(#"{"tool_name":"fea.solve","input":{"mesh":"m1"}}"#.utf8)
+        let job = await store.createJob(toolName: "fea.solve", input: .object(["mesh": .string("m1")]), requestBody: requestBody)
+
+        let jobDir = tempBase.appendingPathComponent(job.id, isDirectory: true)
+        let requestURL = jobDir.appendingPathComponent("request.json")
+        let summaryURL = jobDir.appendingPathComponent("summary.json")
+        XCTAssertTrue(fileManager.fileExists(atPath: requestURL.path))
+        XCTAssertTrue(fileManager.fileExists(atPath: summaryURL.path))
+
+        let storedRequest = try Data(contentsOf: requestURL)
+        XCTAssertEqual(storedRequest, requestBody)
+    }
+
+    func testJobStoreWritesResultArtifact() async throws {
+        let fileManager = FileManager.default
+        let tempBase = fileManager.temporaryDirectory.appendingPathComponent("autosage-result-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: tempBase) }
+
+        let runDirectory = RunDirectory(baseURL: tempBase, fileManager: fileManager)
+        let store = JobStore(runDirectory: runDirectory)
+
+        let job = await store.createJob(toolName: "fea.solve", input: nil)
+        await store.startJob(id: job.id)
+        let result: JSONValue = .object(["status": .string("ok"), "summary": .string("done")])
+        await store.completeJob(id: job.id, result: result, summary: "done")
+
+        let resultURL = tempBase.appendingPathComponent(job.id, isDirectory: true).appendingPathComponent("result.json")
+        XCTAssertTrue(fileManager.fileExists(atPath: resultURL.path))
+
+        let data = try Data(contentsOf: resultURL)
+        let decoded = try JSONCoding.makeDecoder().decode(JSONValue.self, from: data)
+        XCTAssertEqual(decoded, result)
+    }
+
+    func testJobRecordUsesISO8601Timestamps() throws {
+        let record = JobRecord(
+            id: "job_0001",
+            toolName: "fea.solve",
+            createdAt: Date(timeIntervalSince1970: 0),
+            startedAt: nil,
+            finishedAt: nil,
+            status: .queued,
+            summary: nil,
+            result: nil,
+            error: nil
+        )
+
+        let encoder = JSONCoding.makeEncoder()
+        let data = try encoder.encode(record)
+        let payload = try JSONSerialization.jsonObject(with: data, options: []) as? [String: Any]
+        let createdAt = payload?["created_at"] as? String
+        XCTAssertEqual(createdAt, "1970-01-01T00:00:00.000Z")
     }
 
     func testJobsEndpointsCreateAndFetch() throws {
@@ -248,7 +310,7 @@ final class AutoSageCoreTests: XCTestCase {
         let createBody = Data(#"{"tool_name":"fea.solve","input":{"mesh":"beam.msh"}}"#.utf8)
         let createResponse = router.handle(HTTPRequest(method: "POST", path: "/v1/jobs", body: createBody))
         XCTAssertEqual(createResponse.status, 200)
-        let created = try JSONDecoder().decode(CreateJobResponse.self, from: createResponse.body)
+        let created = try JSONCoding.makeDecoder().decode(CreateJobResponse.self, from: createResponse.body)
         XCTAssertEqual(created.status, .queued)
         XCTAssertTrue(created.jobID.hasPrefix("job_"))
 
@@ -257,7 +319,7 @@ final class AutoSageCoreTests: XCTestCase {
         while Date() < deadline {
             let getResponse = router.handle(HTTPRequest(method: "GET", path: "/v1/jobs/\(created.jobID)", body: nil))
             if getResponse.status == 200 {
-                fetched = try JSONDecoder().decode(JobRecord.self, from: getResponse.body)
+                fetched = try JSONCoding.makeDecoder().decode(JobRecord.self, from: getResponse.body)
                 if fetched?.status == .succeeded {
                     break
                 }

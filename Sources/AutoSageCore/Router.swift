@@ -52,6 +52,9 @@ public struct Router {
             return handleCreateJob(request)
         case ("GET", _):
             if request.path.hasPrefix("/v1/jobs/") {
+                if request.path.hasSuffix("/artifacts") {
+                    return handleGetJobArtifacts(request)
+                }
                 return handleGetJob(request)
             }
             return errorResponse(code: "not_found", message: "Unknown route.", status: 404)
@@ -69,7 +72,7 @@ public struct Router {
             )
         }
         do {
-            let decoder = JSONDecoder()
+            let decoder = JSONCoding.makeDecoder()
             let req = try decoder.decode(ResponsesRequest.self, from: body)
             guard let model = nonEmptyModel(req.model) else {
                 return errorResponse(
@@ -138,7 +141,7 @@ public struct Router {
             )
         }
         do {
-            let decoder = JSONDecoder()
+            let decoder = JSONCoding.makeDecoder()
             let req = try decoder.decode(ChatCompletionsRequest.self, from: body)
             guard let model = nonEmptyModel(req.model) else {
                 return errorResponse(
@@ -202,7 +205,7 @@ public struct Router {
         }
 
         do {
-            let req = try JSONDecoder().decode(CreateJobRequest.self, from: body)
+            let req = try JSONCoding.makeDecoder().decode(CreateJobRequest.self, from: body)
             let toolName = req.toolName.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !toolName.isEmpty else {
                 return errorResponse(
@@ -219,7 +222,7 @@ public struct Router {
                 )
             }
 
-            let job = waitForAsync { await jobStore.createJob(toolName: toolName, input: req.input) }
+            let job = waitForAsync { await jobStore.createJob(toolName: toolName, input: req.input, requestBody: body) }
             Task.detached {
                 await jobStore.startJob(id: job.id)
                 let result = tool.run(input: req.input)
@@ -251,6 +254,23 @@ public struct Router {
             )
         }
         return jsonResponse(job)
+    }
+
+    private func handleGetJobArtifacts(_ request: HTTPRequest) -> HTTPResponse {
+        let components = request.path.split(separator: "/")
+        guard components.count == 4, components[0] == "v1", components[1] == "jobs", components[3] == "artifacts" else {
+            return errorResponse(code: "not_found", message: "Unknown route.", status: 404)
+        }
+        let jobID = String(components[2])
+        guard let files = waitForAsync({ await jobStore.listArtifacts(id: jobID) }) else {
+            return errorResponse(
+                code: "not_found",
+                message: "Job not found: \(jobID).",
+                status: 404,
+                details: ["job_id": .string(jobID)]
+            )
+        }
+        return jsonResponse(JobArtifactsResponse(jobID: jobID, files: files))
     }
 
     private func executeToolWithJob(tool: Tool, toolName: String, input: JSONValue?) -> (jobID: String, inlineResult: JSONValue?) {
@@ -315,8 +335,7 @@ public struct Router {
     }
 
     private func jsonResponse<T: Encodable>(_ value: T, status: Int = 200) -> HTTPResponse {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
+        let encoder = JSONCoding.makeEncoder()
         let data = (try? encoder.encode(value)) ?? Data("{}".utf8)
         return HTTPResponse(status: status, headers: ["Content-Type": "application/json"], body: data)
     }

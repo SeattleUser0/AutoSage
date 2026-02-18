@@ -1,0 +1,12 @@
+{
+  "solver" : "fea.solve",
+  "status" : "ok",
+  "summary" : "Stub result for fea.solve.",
+  "values" : [
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5
+  ]
+}

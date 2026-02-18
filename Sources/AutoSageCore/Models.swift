@@ -275,3 +275,28 @@ public struct CreateJobResponse: Codable, Equatable {
         self.status = status
     }
 }
+
+public struct JobArtifactFile: Codable, Equatable, Sendable {
+    public let name: String
+    public let bytes: Int
+
+    public init(name: String, bytes: Int) {
+        self.name = name
+        self.bytes = bytes
+    }
+}
+
+public struct JobArtifactsResponse: Codable, Equatable, Sendable {
+    public let jobID: String
+    public let files: [JobArtifactFile]
+
+    enum CodingKeys: String, CodingKey {
+        case jobID = "job_id"
+        case files
+    }
+
+    public init(jobID: String, files: [JobArtifactFile]) {
+        self.jobID = jobID
+        self.files = files
+    }
+}

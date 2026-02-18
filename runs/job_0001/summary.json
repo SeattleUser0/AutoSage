@@ -1,13 +1,8 @@
 {
-  "created_at" : 793093683.959798,
-  "finished_at" : 793093683.959842,
+  "created_at" : "2026-02-18T08:00:26.706Z",
+  "finished_at" : "2026-02-18T08:00:26.707Z",
   "id" : "job_0001",
-  "result" : {
-    "solver" : "fea.solve",
-    "status" : "ok",
-    "summary" : "done"
-  },
-  "started_at" : 793093683.959811,
+  "started_at" : "2026-02-18T08:00:26.707Z",
   "status" : "succeeded",
   "summary" : "done",
   "tool_name" : "fea.solve"

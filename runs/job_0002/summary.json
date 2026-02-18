@@ -1,12 +1,8 @@
 {
-  "created_at" : 793093683.960176,
-  "error" : {
-    "code" : "solver_error",
-    "message" : "Failed"
-  },
-  "finished_at" : 793093683.960186,
+  "created_at" : "2026-02-18T08:00:26.708Z",
+  "finished_at" : "2026-02-18T08:00:26.709Z",
   "id" : "job_0002",
-  "started_at" : 793093683.960185,
+  "started_at" : "2026-02-18T08:00:26.708Z",
   "status" : "failed",
   "tool_name" : "cfd.solve"
 }
