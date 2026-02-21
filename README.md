@@ -12,11 +12,13 @@ AutoSage is a Swift HTTP backend that exposes OpenAI-compatible routes plus a de
 
 ## Quickstart
 ```bash
-git clone https://github.com/SeattleUser0/AutoSage.git
+git clone <REPO_URL>
 cd AutoSage
 swift build
 swift run AutoSageServer --host 127.0.0.1 --port 8080
 ```
+Replace `<REPO_URL>` with the HTTPS URL of this repository from the GitHub page.
+Example: `git clone https://github.com/SeattleUser0/AutoSage.git`
 
 ## API
 All examples assume the server is running on `127.0.0.1:8080`.
