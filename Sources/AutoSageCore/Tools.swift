@@ -159,6 +159,8 @@ public struct ToolRegistry {
     }
 
     public static let `default` = ToolRegistry(tools: [
+        EchoJSONTool(),
+        WriteTextArtifactTool(),
         FEATool(),
         CFDTool(),
         StokesTool(),

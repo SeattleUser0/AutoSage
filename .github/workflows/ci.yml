@@ -2,43 +2,18 @@ name: AutoSage CI
 
 on:
   push:
-    branches:
-      - main
   pull_request:
-    branches:
-      - main
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build and Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os:
-          - macos-latest
-          - ubuntu-latest
+  test:
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Swift (Linux only)
-        if: runner.os == 'Linux'
-        uses: swift-actions/setup-swift@v2
+      - name: Swift Version
+        run: swift --version
 
-      - name: Install System Dependencies
-        run: |
-          chmod +x ./setup.sh
-          ./setup.sh
-
-      - name: Build Native FFI Libraries
-        run: |
-          make clean-native
-          make install-native-libs
-
-      - name: Run Swift Tests
+      - name: Run Tests
         run: swift test

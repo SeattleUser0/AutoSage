@@ -609,7 +609,9 @@ final class AutoSageCoreTests: XCTestCase {
                 "mesh_repair_pmp",
                 "cad_import_truck",
                 "circuit_simulate_ngspice",
-                "circuits.simulate"
+                "circuits.simulate",
+                "echo_json",
+                "write_text_artifact"
             ])
         )
         for name in names {

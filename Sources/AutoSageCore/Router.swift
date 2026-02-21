@@ -57,6 +57,8 @@ public struct Router {
         case ("GET", "/healthz"):
             let response = HealthResponse(status: "ok", name: "AutoSage", version: "0.1.0")
             return jsonResponse(response)
+        case ("GET", "/v1/tools"):
+            return handleListTools()
         case ("GET", "/admin"):
             return htmlResponse(AdminDashboard.html)
         case ("GET", "/v1/agent/config"):
@@ -73,6 +75,8 @@ public struct Router {
             return handleChatCompletions(request)
         case ("POST", "/v1/jobs"):
             return handleCreateJob(request)
+        case ("POST", "/v1/tools/execute"):
+            return handleExecuteTool(request)
         case ("POST", _):
             if routePath.hasPrefix("/v1/sessions/") {
                 return handleSessionsPost(request, routePath: routePath)
@@ -94,6 +98,108 @@ public struct Router {
     private func handleAgentConfig() -> HTTPResponse {
         let payload = AgentOrchestratorBootstrap.makeConfig(registry: registry)
         return jsonResponse(payload)
+    }
+
+    private func handleListTools() -> HTTPResponse {
+        let descriptors = registry.tools.values
+            .map {
+                PublicToolDescriptor(name: $0.name, description: $0.description, inputSchema: $0.jsonSchema)
+            }
+            .sorted { $0.name < $1.name }
+        return jsonResponse(PublicToolsResponse(tools: descriptors))
+    }
+
+    private func handleExecuteTool(_ request: HTTPRequest) -> HTTPResponse {
+        guard let body = request.body else {
+            let result = Self.makeErrorToolResult(
+                solver: "unknown",
+                summary: "Tool execution request is missing a JSON body.",
+                stderr: "Missing request body.",
+                errorCode: "invalid_request"
+            )
+            return toolResultResponse(result, status: 400)
+        }
+
+        let parsed: ToolExecuteRequest
+        do {
+            parsed = try JSONCoding.makeDecoder().decode(ToolExecuteRequest.self, from: body)
+        } catch {
+            let result = Self.makeErrorToolResult(
+                solver: "unknown",
+                summary: "Tool execution request body is invalid JSON.",
+                stderr: "Failed to decode request JSON.",
+                errorCode: "invalid_request"
+            )
+            return toolResultResponse(result, status: 400)
+        }
+
+        let toolName = parsed.tool.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !toolName.isEmpty else {
+            let result = Self.makeErrorToolResult(
+                solver: "unknown",
+                summary: "tool must be a non-empty string.",
+                stderr: "Missing required field: tool.",
+                errorCode: "invalid_request"
+            )
+            return toolResultResponse(result, status: 400)
+        }
+        guard let tool = registry.tool(named: toolName) else {
+            let result = Self.makeErrorToolResult(
+                solver: toolName,
+                summary: "Unsupported tool: \(toolName).",
+                stderr: "Unsupported tool.",
+                errorCode: "unknown_tool"
+            )
+            return toolResultResponse(result, status: 404)
+        }
+
+        let limits = parsed.context?.limits ?? .default
+        let store = self.jobStore
+        let job = waitForAsync { await store.createJob(toolName: toolName, input: parsed.input, requestBody: body) }
+        waitForAsync { await store.startJob(id: job.id) }
+
+        do {
+            let rawResult = try Self.runToolForJob(
+                tool: tool,
+                input: parsed.input,
+                jobID: job.id,
+                jobStore: store,
+                limits: limits
+            )
+            let normalized = try Self.normalizeToolResult(rawResult, fallbackSolver: toolName)
+            let capped = Self.applyExecutionLimits(normalized, limits: limits)
+            let value = try capped.asJSONValue()
+            waitForAsync { await store.completeJob(id: job.id, result: value, summary: capped.summary) }
+
+            let httpStatus = capped.status.lowercased() == "ok" ? 200 : 500
+            return toolResultResponse(capped, status: httpStatus)
+        } catch let error as AutoSageError {
+            let status = error.code == "invalid_input" ? 400 : 500
+            let result = Self.makeErrorToolResult(
+                solver: toolName,
+                summary: "Tool execution failed.",
+                stderr: error.message,
+                errorCode: error.code,
+                metrics: ["job_id": .string(job.id)]
+            )
+            waitForAsync { await store.failJob(id: job.id, error: error) }
+            return toolResultResponse(result, status: status)
+        } catch {
+            let result = Self.makeErrorToolResult(
+                solver: toolName,
+                summary: "Tool execution failed.",
+                stderr: "Unexpected error during tool execution.",
+                errorCode: "solver_failed",
+                metrics: ["job_id": .string(job.id)]
+            )
+            waitForAsync {
+                await store.failJob(
+                    id: job.id,
+                    error: AutoSageError(code: "solver_failed", message: "Unexpected error during tool execution.")
+                )
+            }
+            return toolResultResponse(result, status: 500)
+        }
     }
 
     private func handleAdminLogs(_ request: HTTPRequest) -> HTTPResponse {
@@ -647,8 +753,10 @@ public struct Router {
                     jobStore: store,
                     limits: limits
                 )
-                let summary = Self.resultSummary(from: result)
-                await store.completeJob(id: jobID, result: result, summary: summary)
+                let normalized = try Self.normalizeToolResult(result, fallbackSolver: tool.name)
+                let capped = Self.applyExecutionLimits(normalized, limits: limits)
+                let cappedValue = try capped.asJSONValue()
+                await store.completeJob(id: jobID, result: cappedValue, summary: capped.summary)
             } catch let error as AutoSageError {
                 await store.failJob(id: jobID, error: error)
             } catch {
@@ -679,15 +787,6 @@ public struct Router {
         }
         let context = ToolExecutionContext(jobID: jobID, jobDirectoryURL: jobDirectoryURL, limits: limits)
         return try tool.run(input: input, context: context)
-    }
-
-    private static func resultSummary(from result: JSONValue) -> String {
-        guard case .object(let object) = result,
-              case .string(let summary)? = object["summary"],
-              !summary.isEmpty else {
-            return "Tool execution completed."
-        }
-        return summary
     }
 
     private func requestedToolInvocation(from toolChoice: JSONValue?) throws -> ToolInvocation? {
@@ -816,6 +915,137 @@ public struct Router {
             Thread.sleep(forTimeInterval: 0.01)
         }
         return nil
+    }
+
+    private static func normalizeToolResult(_ value: JSONValue, fallbackSolver: String) throws -> ToolExecutionResult {
+        do {
+            let data = try JSONCoding.makeEncoder().encode(value)
+            var decoded = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: data)
+            if decoded.solver.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                decoded = ToolExecutionResult(
+                    status: decoded.status,
+                    solver: fallbackSolver,
+                    summary: decoded.summary,
+                    stdout: decoded.stdout,
+                    stderr: decoded.stderr,
+                    exitCode: decoded.exitCode,
+                    artifacts: decoded.artifacts,
+                    metrics: decoded.metrics,
+                    output: decoded.output
+                )
+            }
+            return decoded
+        } catch {
+            throw AutoSageError(
+                code: "invalid_tool_output",
+                message: "Tool output could not be normalized to the ToolResult contract."
+            )
+        }
+    }
+
+    private static func applyExecutionLimits(_ result: ToolExecutionResult, limits: ToolExecutionLimits) -> ToolExecutionResult {
+        let cappedStdout = truncateUTF8(result.stdout, maxBytes: limits.maxStdoutBytes)
+        let cappedStderr = truncateUTF8(result.stderr, maxBytes: limits.maxStderrBytes)
+        let cappedSummary = truncateCharacters(result.summary, maxCharacters: limits.maxSummaryCharacters)
+
+        var artifacts = result.artifacts
+        let oversized = artifacts.filter { $0.bytes > limits.maxArtifactBytes }
+        if !oversized.isEmpty {
+            artifacts.removeAll { $0.bytes > limits.maxArtifactBytes }
+        }
+        let droppedForCount = max(0, artifacts.count - limits.maxArtifacts)
+        if droppedForCount > 0 {
+            artifacts = Array(artifacts.prefix(limits.maxArtifacts))
+        }
+
+        var metrics = result.metrics
+        if cappedStdout.truncatedBytes > 0 {
+            metrics["stdout_truncated_bytes"] = .number(Double(cappedStdout.truncatedBytes))
+        }
+        if cappedStderr.truncatedBytes > 0 {
+            metrics["stderr_truncated_bytes"] = .number(Double(cappedStderr.truncatedBytes))
+        }
+        if cappedSummary.wasTruncated {
+            metrics["summary_truncated"] = .bool(true)
+        }
+        if !oversized.isEmpty {
+            metrics["artifacts_removed_oversize"] = .number(Double(oversized.count))
+        }
+        if droppedForCount > 0 {
+            metrics["artifacts_removed_count_cap"] = .number(Double(droppedForCount))
+        }
+
+        var summary = cappedSummary.value
+        let truncationNotes = [
+            cappedStdout.truncatedBytes > 0 ? "stdout truncated" : nil,
+            cappedStderr.truncatedBytes > 0 ? "stderr truncated" : nil,
+            cappedSummary.wasTruncated ? "summary truncated" : nil,
+            !oversized.isEmpty ? "oversize artifacts removed" : nil,
+            droppedForCount > 0 ? "artifact count capped" : nil
+        ].compactMap { $0 }
+        if !truncationNotes.isEmpty {
+            let note = " [limits: \(truncationNotes.joined(separator: ", "))]"
+            let combined = summary + note
+            summary = truncateCharacters(combined, maxCharacters: limits.maxSummaryCharacters).value
+        }
+
+        return ToolExecutionResult(
+            status: result.status,
+            solver: result.solver,
+            summary: summary,
+            stdout: cappedStdout.value,
+            stderr: cappedStderr.value,
+            exitCode: result.exitCode,
+            artifacts: artifacts,
+            metrics: metrics,
+            output: result.output
+        )
+    }
+
+    private static func makeErrorToolResult(
+        solver: String,
+        summary: String,
+        stderr: String,
+        errorCode: String,
+        metrics: [String: JSONValue] = [:]
+    ) -> ToolExecutionResult {
+        var mergedMetrics = metrics
+        mergedMetrics["error_code"] = .string(errorCode)
+        return ToolExecutionResult(
+            status: "error",
+            solver: solver,
+            summary: summary,
+            stdout: "",
+            stderr: stderr,
+            exitCode: 1,
+            artifacts: [],
+            metrics: mergedMetrics,
+            output: nil
+        )
+    }
+
+    private func toolResultResponse(_ result: ToolExecutionResult, status: Int) -> HTTPResponse {
+        jsonResponse(result, status: status)
+    }
+
+    private static func truncateUTF8(_ value: String, maxBytes: Int) -> (value: String, truncatedBytes: Int) {
+        let bytes = Array(value.utf8)
+        guard bytes.count > maxBytes else {
+            return (value, 0)
+        }
+
+        var prefix = Array(bytes.prefix(maxBytes))
+        while !prefix.isEmpty, String(data: Data(prefix), encoding: .utf8) == nil {
+            prefix.removeLast()
+        }
+        let truncated = String(data: Data(prefix), encoding: .utf8) ?? ""
+        return (truncated, bytes.count - prefix.count)
+    }
+
+    private static func truncateCharacters(_ value: String, maxCharacters: Int) -> (value: String, wasTruncated: Bool) {
+        guard value.count > maxCharacters else { return (value, false) }
+        let prefix = String(value.prefix(max(0, maxCharacters - 3)))
+        return (prefix + "...", true)
     }
 
     private func nonEmptyModel(_ model: String?) -> String? {

@@ -339,4 +339,99 @@ final class AutoSageIntegrationTests: XCTestCase {
         XCTAssertEqual(renderedAssetResponse.headers["Content-Type"], "image/png")
         XCTAssertEqual(String(data: renderedAssetResponse.body, encoding: .utf8), "PNG")
     }
+
+    func testPublicToolContractEndpointsHealthListAndExecute() throws {
+        let router = Router()
+
+        let healthz = router.handle(HTTPRequest(method: "GET", path: "/healthz", body: nil))
+        XCTAssertEqual(healthz.status, 200)
+        let health = try JSONCoding.makeDecoder().decode(HealthResponse.self, from: healthz.body)
+        XCTAssertEqual(health.status, "ok")
+        XCTAssertFalse(health.version.isEmpty)
+
+        let toolsResponse = router.handle(HTTPRequest(method: "GET", path: "/v1/tools", body: nil))
+        XCTAssertEqual(toolsResponse.status, 200)
+        let tools = try JSONCoding.makeDecoder().decode(PublicToolsResponse.self, from: toolsResponse.body)
+        XCTAssertFalse(tools.tools.isEmpty)
+        XCTAssertEqual(tools.tools.map(\.name), tools.tools.map(\.name).sorted())
+        guard let echo = tools.tools.first(where: { $0.name == "echo_json" }) else {
+            return XCTFail("echo_json not found in /v1/tools output.")
+        }
+        XCTAssertFalse(echo.description.isEmpty)
+        guard case .object = echo.inputSchema else {
+            return XCTFail("echo_json input_schema should be an object.")
+        }
+
+        let executeBody = Data(
+            """
+            {
+              "tool": "echo_json",
+              "input": {
+                "message": "hello",
+                "n": 2
+              }
+            }
+            """.utf8
+        )
+        let executeResponse = router.handle(
+            HTTPRequest(
+                method: "POST",
+                path: "/v1/tools/execute",
+                body: executeBody,
+                headers: ["content-type": "application/json"]
+            )
+        )
+        XCTAssertEqual(executeResponse.status, 200)
+
+        let toolResult = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: executeResponse.body)
+        XCTAssertEqual(toolResult.status, "ok")
+        XCTAssertEqual(toolResult.solver, "echo_json")
+        XCTAssertEqual(toolResult.exitCode, 0)
+        XCTAssertEqual(toolResult.stdout, "")
+        XCTAssertEqual(toolResult.stderr, "")
+        XCTAssertNotNil(toolResult.output)
+
+        guard case .object(let output)? = toolResult.output else {
+            return XCTFail("Expected output object from echo_json execution.")
+        }
+        XCTAssertEqual(output["message"], .string("hello"))
+        XCTAssertEqual(output["repeat"], .stringArray(["hello", "hello"]))
+    }
+
+    func testExecuteEndpointReturnsToolResultContractOnErrors() throws {
+        let router = Router()
+
+        let unknownToolBody = Data(#"{"tool":"does.not.exist","input":{}}"#.utf8)
+        let response = router.handle(
+            HTTPRequest(
+                method: "POST",
+                path: "/v1/tools/execute",
+                body: unknownToolBody,
+                headers: ["content-type": "application/json"]
+            )
+        )
+        XCTAssertEqual(response.status, 404)
+
+        let toolResult = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: response.body)
+        XCTAssertEqual(toolResult.status, "error")
+        XCTAssertEqual(toolResult.solver, "does.not.exist")
+        XCTAssertEqual(toolResult.exitCode, 1)
+        XCTAssertFalse(toolResult.summary.isEmpty)
+        XCTAssertFalse(toolResult.stderr.isEmpty)
+        XCTAssertNotNil(toolResult.metrics["error_code"])
+
+        let invalidJSON = router.handle(
+            HTTPRequest(
+                method: "POST",
+                path: "/v1/tools/execute",
+                body: Data("{".utf8),
+                headers: ["content-type": "application/json"]
+            )
+        )
+        XCTAssertEqual(invalidJSON.status, 400)
+        let invalidResult = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: invalidJSON.body)
+        XCTAssertEqual(invalidResult.status, "error")
+        XCTAssertEqual(invalidResult.solver, "unknown")
+        XCTAssertEqual(invalidResult.exitCode, 1)
+    }
 }

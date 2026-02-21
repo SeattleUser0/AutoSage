@@ -1,5 +1,4 @@
-// swift-tools-version:5.7
-// The swift-tools-version declares the minimum version of Swift required to build this package.
+// swift-tools-version: 5.7
 
 import PackageDescription
 
@@ -9,27 +8,33 @@ let package = Package(
         .macOS(.v11)
     ],
     products: [
+        // Core library shared by server/CLI/control app.
         .library(
             name: "AutoSageCore",
             targets: ["AutoSageCore"]
         ),
+        // CLI utilities.
         .executable(
             name: "autosage",
             targets: ["autosage"]
         ),
+        // HTTP server executable.
         .executable(
             name: "AutoSageServer",
             targets: ["AutoSageServer"]
         ),
+        // macOS control-panel executable.
         .executable(
             name: "AutoSageControl",
             targets: ["AutoSageControl"]
         )
     ],
     dependencies: [
+        // CLI argument parsing.
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
     ],
     targets: [
+        // Native FFI bridge modules.
         .systemLibrary(
             name: "CTruckFFI",
             path: "Native/truck_ffi"
@@ -54,9 +59,18 @@ let package = Package(
             name: "CNgspiceFFI",
             path: "Native/ngspice_ffi"
         ),
+
+        // Swift targets.
         .target(
             name: "AutoSageCore",
-            dependencies: ["CTruckFFI", "CPMPFFI", "CQuartetFFI", "CVTKFFI", "COpen3DFFI", "CNgspiceFFI"]
+            dependencies: [
+                "CTruckFFI",
+                "CPMPFFI",
+                "CQuartetFFI",
+                "CVTKFFI",
+                "COpen3DFFI",
+                "CNgspiceFFI"
+            ]
         ),
         .executableTarget(
             name: "AutoSageServer",

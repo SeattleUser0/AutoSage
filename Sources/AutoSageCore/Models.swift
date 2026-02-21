@@ -384,3 +384,49 @@ public struct AdminLogsResponse: Codable, Equatable, Sendable {
         self.generatedAt = generatedAt
     }
 }
+
+public struct PublicToolDescriptor: Codable, Equatable, Sendable {
+    public let name: String
+    public let description: String
+    public let inputSchema: JSONValue
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case description
+        case inputSchema = "input_schema"
+    }
+
+    public init(name: String, description: String, inputSchema: JSONValue) {
+        self.name = name
+        self.description = description
+        self.inputSchema = inputSchema
+    }
+}
+
+public struct PublicToolsResponse: Codable, Equatable, Sendable {
+    public let tools: [PublicToolDescriptor]
+
+    public init(tools: [PublicToolDescriptor]) {
+        self.tools = tools
+    }
+}
+
+public struct ToolExecuteContextRequest: Codable, Equatable, Sendable {
+    public let limits: ToolExecutionLimits?
+
+    public init(limits: ToolExecutionLimits?) {
+        self.limits = limits
+    }
+}
+
+public struct ToolExecuteRequest: Codable, Equatable, Sendable {
+    public let tool: String
+    public let input: JSONValue?
+    public let context: ToolExecuteContextRequest?
+
+    public init(tool: String, input: JSONValue?, context: ToolExecuteContextRequest?) {
+        self.tool = tool
+        self.input = input
+        self.context = context
+    }
+}
