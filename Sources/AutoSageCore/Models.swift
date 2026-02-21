@@ -391,11 +391,24 @@ public enum ToolStability: String, Codable, Equatable, Sendable {
     case deprecated
 }
 
+public struct ToolExample: Codable, Equatable, Sendable {
+    public let title: String
+    public let input: JSONValue
+    public let notes: String?
+
+    public init(title: String, input: JSONValue, notes: String? = nil) {
+        self.title = title
+        self.input = input
+        self.notes = notes
+    }
+}
+
 public struct PublicToolDescriptor: Codable, Equatable, Sendable {
     public let name: String
     public let version: String
     public let stability: ToolStability
     public let tags: [String]?
+    public let examples: [ToolExample]?
     public let description: String
     public let inputSchema: JSONValue
 
@@ -404,6 +417,7 @@ public struct PublicToolDescriptor: Codable, Equatable, Sendable {
         case version
         case stability
         case tags
+        case examples
         case description
         case inputSchema = "input_schema"
     }
@@ -413,6 +427,7 @@ public struct PublicToolDescriptor: Codable, Equatable, Sendable {
         version: String,
         stability: ToolStability,
         tags: [String]?,
+        examples: [ToolExample]?,
         description: String,
         inputSchema: JSONValue
     ) {
@@ -420,6 +435,7 @@ public struct PublicToolDescriptor: Codable, Equatable, Sendable {
         self.version = version
         self.stability = stability
         self.tags = tags
+        self.examples = examples
         self.description = description
         self.inputSchema = inputSchema
     }

@@ -1,12 +1,14 @@
 # AutoSage
 
-AutoSage is a Swift HTTP server that exposes OpenAI-compatible routes and a minimal tool execution API. Today it supports health checks, OpenAI-style `responses` and `chat/completions` stubs, tool discovery, and deterministic tool execution through `echo_json` and `write_text_artifact`.
+[![AutoSage CI](https://github.com/SeattleUser0/AutoSage/actions/workflows/ci.yml/badge.svg)](https://github.com/SeattleUser0/AutoSage/actions/workflows/ci.yml)
 
-The stable integration surface is currently:
-- `echo_json`
-- `write_text_artifact`
+AutoSage is a Swift HTTP backend that exposes OpenAI-compatible routes plus a deterministic tool execution loop. The current stable integration surface is `echo_json` and `write_text_artifact`; other tools are available as experimental integrations.
 
-All other tools in `/v1/tools` are published as experimental metadata and may change as solver integrations harden.
+- [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security](SECURITY.md)
+- [Tool Contract](docs/TOOLS.md)
+- [Dependency Modes](docs/DEPENDENCIES.md)
 
 ## Quickstart
 ```bash
@@ -34,7 +36,7 @@ curl -s "http://127.0.0.1:8080/v1/tools?stability=stable"
 curl -s "http://127.0.0.1:8080/v1/tools?tags=artifact,pde"
 ```
 
-### `POST /v1/tools/execute` (success path)
+### `POST /v1/tools/execute` (stable example: `echo_json`)
 ```bash
 curl -s http://127.0.0.1:8080/v1/tools/execute \
   -H 'Content-Type: application/json' \
@@ -47,7 +49,7 @@ curl -s http://127.0.0.1:8080/v1/tools/execute \
   }'
 ```
 
-### `POST /v1/tools/execute` (artifact path)
+### `POST /v1/tools/execute` (stable example: `write_text_artifact`)
 ```bash
 curl -s http://127.0.0.1:8080/v1/tools/execute \
   -H 'Content-Type: application/json' \
@@ -95,8 +97,7 @@ curl -s http://127.0.0.1:8080/v1/chat/completions \
 ```
 
 ## OpenAPI
-YAML is the source of truth: `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/openapi/openapi.yaml`.
-`/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/openapi/openapi.json` is the generated JSON form.
+YAML is the source of truth at `openapi/openapi.yaml`. JSON form is available at `openapi/openapi.json`.
 
 ### `GET /openapi.yaml`
 ```bash
@@ -108,15 +109,17 @@ curl -s http://127.0.0.1:8080/openapi.yaml
 curl -s http://127.0.0.1:8080/openapi.json
 ```
 
-## Tooling
-Tool naming, stability levels, and the normalized ToolResult contract are documented in `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/docs/TOOLS.md`.
+## What works on a clean machine
+With only Swift installed:
+- server startup
+- `/healthz`
+- `/openapi.yaml` and `/openapi.json`
+- `/v1/tools`
+- stable tool execution (`echo_json`, `write_text_artifact`)
 
-## Roadmap
-- Expand stable tool set beyond `echo_json` and `write_text_artifact`.
-- Add more end-to-end HTTP server process tests for additional routes.
-- Tighten per-tool schema validation coverage.
+Some tools require native dependencies (MFEM, ngspice, FFI bridge libraries). See `docs/DEPENDENCIES.md`.
 
-## Test
+## Testing
 ```bash
 swift test
 ```

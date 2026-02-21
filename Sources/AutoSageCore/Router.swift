@@ -292,6 +292,7 @@ public struct Router {
                     version: entry.metadata.version,
                     stability: entry.metadata.stability,
                     tags: entry.metadata.tags.isEmpty ? nil : entry.metadata.tags,
+                    examples: entry.metadata.examples.isEmpty ? nil : entry.metadata.examples,
                     description: entry.tool.description,
                     inputSchema: entry.tool.jsonSchema
                 )

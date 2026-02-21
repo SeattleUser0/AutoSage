@@ -197,7 +197,7 @@ public struct CircuitSimulateNgspiceTool: Tool {
     public static let defaultInvoker: NgspiceFFIInvoker = { netlistPath, targetVectors in
         guard let symbols = NgspiceFFILoader.shared else {
             throw AutoSageError(
-                code: "solver_not_installed",
+                code: "missing_dependency",
                 message: "ngspice_ffi dynamic library not found.",
                 details: [
                     "hint": .string("Build Native/ngspice_ffi and set AUTOSAGE_NGSPICE_FFI_LIB to libngspice_ffi.dylib.")
@@ -343,7 +343,7 @@ public struct CircuitSimulateNgspiceTool: Tool {
         case 1:
             return AutoSageError(code: "invalid_input", message: normalized, details: details)
         case 2:
-            return AutoSageError(code: "solver_not_installed", message: normalized, details: details)
+            return AutoSageError(code: "missing_dependency", message: normalized, details: details)
         case 4:
             return AutoSageError(code: "invalid_input", message: normalized, details: details)
         default:

@@ -376,6 +376,14 @@ final class AutoSageIntegrationTests: XCTestCase {
         }
         XCTAssertFalse(echo.description.isEmpty)
         XCTAssertEqual(echo.stability, .stable)
+        XCTAssertFalse((echo.examples ?? []).isEmpty)
+        if let firstExample = echo.examples?.first {
+            XCTAssertFalse(firstExample.title.isEmpty)
+            guard case .object(let exampleInput) = firstExample.input else {
+                return XCTFail("echo_json example input should be a JSON object.")
+            }
+            XCTAssertEqual(exampleInput["message"], .string("hello"))
+        }
         guard case .object = echo.inputSchema else {
             return XCTFail("echo_json input_schema should be an object.")
         }
@@ -426,6 +434,7 @@ final class AutoSageIntegrationTests: XCTestCase {
         XCTAssertEqual(stableNames, ["echo_json", "write_text_artifact"])
         for tool in stableTools.tools {
             XCTAssertEqual(tool.stability, .stable)
+            XCTAssertFalse((tool.examples ?? []).isEmpty)
         }
 
         let taggedResponse = router.handle(HTTPRequest(method: "GET", path: "/v1/tools?tags=artifact,pde", body: nil))

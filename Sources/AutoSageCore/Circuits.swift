@@ -231,8 +231,9 @@ public enum CircuitsSimulationRunner {
         let decoded = try decodeInput(from: input)
         guard ngspiceInstalled() else {
             throw AutoSageError(
-                code: "solver_not_installed",
-                message: "ngspice is not installed. Install it with: brew install ngspice."
+                code: "missing_dependency",
+                message: "ngspice is not installed or not on PATH. Checked PATH for ngspice.",
+                details: ["search": .string("PATH")]
             )
         }
 
@@ -365,8 +366,9 @@ public enum CircuitsSimulationRunner {
             try process.run()
         } catch {
             throw AutoSageError(
-                code: "solver_not_installed",
-                message: "ngspice is not installed. Install it with: brew install ngspice."
+                code: "missing_dependency",
+                message: "ngspice is not installed or not on PATH. Checked PATH for ngspice.",
+                details: ["search": .string("PATH")]
             )
         }
 

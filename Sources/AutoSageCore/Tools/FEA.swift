@@ -226,9 +226,12 @@ public struct FEATool: Tool {
             try process.run()
         } catch {
             throw AutoSageError(
-                code: "solver_not_installed",
-                message: "mfem-driver is not installed or not executable.",
-                details: ["driver": .string(driverExecutable)]
+                code: "missing_dependency",
+                message: "mfem-driver is not installed or not executable. Checked AUTOSAGE_MFEM_DRIVER and PATH.",
+                details: [
+                    "driver": .string(driverExecutable),
+                    "search": .string("AUTOSAGE_MFEM_DRIVER,PATH")
+                ]
             )
         }
 
@@ -366,8 +369,9 @@ public struct FEATool: Tool {
     private static func resolveDriverExecutable(_ value: String?) throws -> String {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
             throw AutoSageError(
-                code: "solver_not_installed",
-                message: "mfem-driver is not configured."
+                code: "missing_dependency",
+                message: "mfem-driver is not configured. Set AUTOSAGE_MFEM_DRIVER or add mfem-driver to PATH.",
+                details: ["search": .string("AUTOSAGE_MFEM_DRIVER,PATH")]
             )
         }
         let basename = URL(fileURLWithPath: value).lastPathComponent

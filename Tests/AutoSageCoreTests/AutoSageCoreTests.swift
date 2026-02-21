@@ -131,12 +131,127 @@ final class AutoSageCoreTests: XCTestCase {
         return array
     }
 
+    private func asBool(_ value: JSONValue?) -> Bool? {
+        guard case .bool(let value)? = value else { return nil }
+        return value
+    }
+
     private func isMissingDescription(_ value: JSONValue?) -> Bool {
         guard let description = asString(value) else { return true }
         let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return true }
         let normalized = trimmed.lowercased()
         return normalized == "todo" || normalized == "tbd"
+    }
+
+    private func typeName(for value: JSONValue) -> String {
+        switch value {
+        case .null:
+            return "null"
+        case .bool:
+            return "boolean"
+        case .number(let number):
+            return number.rounded() == number ? "integer" : "number"
+        case .string:
+            return "string"
+        case .array:
+            return "array"
+        case .object:
+            return "object"
+        }
+    }
+
+    private func value(_ value: JSONValue, matchesSchemaType schemaType: String) -> Bool {
+        switch schemaType {
+        case "string":
+            if case .string = value { return true }
+            return false
+        case "integer":
+            if case .number(let number) = value { return number.rounded() == number }
+            return false
+        case "number":
+            if case .number = value { return true }
+            return false
+        case "boolean":
+            if case .bool = value { return true }
+            return false
+        case "array":
+            if case .array = value { return true }
+            return false
+        case "object":
+            if case .object = value { return true }
+            return false
+        case "null":
+            if case .null = value { return true }
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func schemaValidationIssues(
+        input: JSONValue,
+        schema: [String: JSONValue],
+        path: String = "$"
+    ) -> [String] {
+        var issues: [String] = []
+        guard case .object(let inputObject) = input else {
+            return ["\(path): expected object input, got \(typeName(for: input))"]
+        }
+
+        let properties = asObject(schema["properties"]) ?? [:]
+        let required: [String] = asArray(schema["required"])?.compactMap { entry in
+            if case .string(let key) = entry { return key }
+            return nil
+        } ?? []
+
+        for requiredKey in required where inputObject[requiredKey] == nil {
+            issues.append("\(path): missing required key '\(requiredKey)'")
+        }
+
+        if asBool(schema["additionalProperties"]) == false {
+            for key in inputObject.keys where properties[key] == nil {
+                issues.append("\(path): unexpected key '\(key)'")
+            }
+        }
+
+        for key in inputObject.keys.sorted() {
+            guard let propertySchema = asObject(properties[key]),
+                  let inputValue = inputObject[key] else {
+                continue
+            }
+
+            let propertyPath = "\(path).\(key)"
+            if let schemaType = asString(propertySchema["type"])?.lowercased(),
+               !value(inputValue, matchesSchemaType: schemaType) {
+                issues.append(
+                    "\(propertyPath): expected \(schemaType), got \(typeName(for: inputValue))"
+                )
+                continue
+            }
+
+            if let propertyType = asString(propertySchema["type"])?.lowercased(), propertyType == "object" {
+                issues.append(contentsOf: schemaValidationIssues(
+                    input: inputValue,
+                    schema: propertySchema,
+                    path: propertyPath
+                ))
+            } else if let propertyType = asString(propertySchema["type"])?.lowercased(),
+                      propertyType == "array",
+                      case .array(let elements) = inputValue,
+                      let itemSchema = asObject(propertySchema["items"]) {
+                for (index, element) in elements.enumerated() {
+                    if let itemType = asString(itemSchema["type"])?.lowercased(),
+                       !value(element, matchesSchemaType: itemType) {
+                        issues.append(
+                            "\(propertyPath)[\(index)]: expected \(itemType), got \(typeName(for: element))"
+                        )
+                    }
+                }
+            }
+        }
+
+        return issues
     }
 
     private func schemaPropertyAuditIssues(
@@ -797,6 +912,44 @@ final class AutoSageCoreTests: XCTestCase {
             XCTFail(
                 """
                 Tool metadata/schema audit failed (\(failures.count) issue(s)):
+                - \(failures.joined(separator: "\n- "))
+                """
+            )
+        }
+    }
+
+    func testStableToolsProvideSchemaValidatedExamples() {
+        let registry = ToolRegistry.default
+        let stableTools = registry.listTools(stability: .stable)
+        XCTAssertFalse(stableTools.isEmpty)
+
+        var failures: [String] = []
+        for entry in stableTools {
+            let toolName = entry.tool.name
+            let examples = entry.metadata.examples
+            if examples.isEmpty {
+                failures.append("\(toolName): stable tool must include at least one example")
+                continue
+            }
+            guard let schema = asObject(entry.tool.jsonSchema) else {
+                failures.append("\(toolName): schema is not a JSON object")
+                continue
+            }
+
+            for (index, example) in examples.enumerated() {
+                let title = example.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                if title.isEmpty {
+                    failures.append("\(toolName): example[\(index)] title must be non-empty")
+                }
+                let issues = schemaValidationIssues(input: example.input, schema: schema)
+                failures.append(contentsOf: issues.map { "\(toolName): example[\(index)] \($0)" })
+            }
+        }
+
+        if !failures.isEmpty {
+            XCTFail(
+                """
+                Stable tool examples failed validation (\(failures.count) issue(s)):
                 - \(failures.joined(separator: "\n- "))
                 """
             )
@@ -5427,6 +5580,30 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertTrue(artifactNames.contains("circuit.cir"))
         XCTAssertTrue(artifactNames.contains("ngspice.log"))
         XCTAssertTrue(artifactNames.contains("ngspice.raw"))
+    }
+
+    func testCircuitsToolReturnsMissingDependencyWhenNgspiceUnavailable() throws {
+        let fileManager = FileManager.default
+        let tempBase = fileManager.temporaryDirectory.appendingPathComponent("autosage-circuits-missing-dep-\(UUID().uuidString)", isDirectory: true)
+        defer { try? fileManager.removeItem(at: tempBase) }
+
+        let runner: CircuitsCommandRunner = { _, _, _, _, _, _ in
+            XCTFail("Runner should not execute when ngspiceInstalled returns false.")
+            return CircuitsCommandResult(exitCode: 0, stdout: "", stderr: "", elapsedMS: 0)
+        }
+
+        let tool = CircuitsSimulateTool(commandRunner: runner, ngspiceInstalled: { false })
+        let context = ToolExecutionContext(jobID: "job_dep", jobDirectoryURL: tempBase, limits: .default)
+        let input: JSONValue = .object([
+            "netlist": .string("V1 in 0 DC 1\nR1 in 0 1k\n.end")
+        ])
+
+        XCTAssertThrowsError(try tool.run(input: input, context: context)) { error in
+            guard let autosageError = error as? AutoSageError else {
+                return XCTFail("Expected AutoSageError")
+            }
+            XCTAssertEqual(autosageError.code, "missing_dependency")
+        }
     }
 
     func testCircuitSimulateNgspiceToolUsesMockInvokerAndWritesArtifact() throws {

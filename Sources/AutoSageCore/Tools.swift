@@ -147,8 +147,14 @@ public struct ToolCatalogMetadata: Codable, Equatable, Sendable {
     public let stability: ToolStability
     public let version: String
     public let tags: [String]
+    public let examples: [ToolExample]
 
-    public init(stability: ToolStability, version: String = "1", tags: [String] = []) {
+    public init(
+        stability: ToolStability,
+        version: String = "1",
+        tags: [String] = [],
+        examples: [ToolExample] = []
+    ) {
         self.stability = stability
         let trimmedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
         self.version = trimmedVersion.isEmpty ? "1" : trimmedVersion
@@ -159,6 +165,22 @@ public struct ToolCatalogMetadata: Codable, Equatable, Sendable {
                     .filter { !$0.isEmpty }
             )
         ).sorted()
+        self.examples = examples
+            .compactMap { example in
+                let title = example.title.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !title.isEmpty else { return nil }
+                let notesTrimmed = example.notes?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let normalizedNotes = notesTrimmed?.isEmpty == false ? notesTrimmed : nil
+                return ToolExample(title: title, input: example.input, notes: normalizedNotes)
+            }
+            .sorted { lhs, rhs in
+                let lhsTitle = lhs.title.lowercased()
+                let rhsTitle = rhs.title.lowercased()
+                if lhsTitle == rhsTitle {
+                    return lhs.title < rhs.title
+                }
+                return lhsTitle < rhsTitle
+            }
     }
 }
 
@@ -445,11 +467,39 @@ public struct ToolRegistry {
     public static let `default` = ToolRegistry(registrations: [
         ToolRegistration(
             tool: EchoJSONTool(),
-            metadata: ToolCatalogMetadata(stability: .stable, version: "1", tags: ["util", "deterministic"])
+            metadata: ToolCatalogMetadata(
+                stability: .stable,
+                version: "1",
+                tags: ["util", "deterministic"],
+                examples: [
+                    ToolExample(
+                        title: "Echo message twice",
+                        input: .object([
+                            "message": .string("hello"),
+                            "n": .number(2)
+                        ]),
+                        notes: "Copy input into POST /v1/tools/execute with tool=echo_json."
+                    )
+                ]
+            )
         ),
         ToolRegistration(
             tool: WriteTextArtifactTool(),
-            metadata: ToolCatalogMetadata(stability: .stable, version: "1", tags: ["io", "artifact", "deterministic"])
+            metadata: ToolCatalogMetadata(
+                stability: .stable,
+                version: "1",
+                tags: ["io", "artifact", "deterministic"],
+                examples: [
+                    ToolExample(
+                        title: "Write note artifact",
+                        input: .object([
+                            "filename": .string("note.txt"),
+                            "text": .string("artifact demo")
+                        ]),
+                        notes: "Produces a text artifact under the current job directory."
+                    )
+                ]
+            )
         ),
         ToolRegistration(tool: FEATool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "fea"])),
         ToolRegistration(tool: CFDTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "cfd"])),

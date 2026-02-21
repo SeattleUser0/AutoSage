@@ -60,6 +60,12 @@ paths:
                         tags:
                           - deterministic
                           - util
+                        examples:
+                          - title: Echo message twice
+                            input:
+                              message: hello
+                              n: 2
+                            notes: Copy input into POST /v1/tools/execute with tool=echo_json.
                         description: Echoes a message deterministically and optionally repeats it n times.
                         input_schema:
                           type: object
@@ -287,11 +293,31 @@ components:
           description: Optional tags used for discovery and filtering.
           items:
             type: string
+        examples:
+          type: array
+          description: Optional copy/paste-ready examples for stable integrations.
+          items:
+            $ref: '#/components/schemas/ToolExample'
         description:
           type: string
           description: Human-readable tool description.
         input_schema:
           $ref: '#/components/schemas/ArbitraryObject'
+    ToolExample:
+      type: object
+      description: Example invocation payload for a tool.
+      required:
+        - title
+        - input
+      properties:
+        title:
+          type: string
+          description: Short example title.
+        input:
+          $ref: '#/components/schemas/ArbitraryJSON'
+        notes:
+          type: string
+          description: Optional usage notes for this example.
     PublicToolsResponse:
       type: object
       description: Tool registry response.

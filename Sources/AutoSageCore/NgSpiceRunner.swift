@@ -76,8 +76,8 @@ public enum NgSpiceRunner {
         }
         guard isNgspiceInstalled() else {
             throw NgSpiceRunnerError(
-                code: "solver_not_installed",
-                message: "ngspice is not installed. Install it with: brew install ngspice."
+                code: "missing_dependency",
+                message: "ngspice is not installed or not on PATH."
             )
         }
 
@@ -252,7 +252,7 @@ public enum NgSpiceRunner {
             timeoutS: 5
         )
         guard version.exitCode == 0 else {
-            throw NgSpiceRunnerError(code: "solver_not_installed", message: "ngspice -v failed.")
+            throw NgSpiceRunnerError(code: "missing_dependency", message: "ngspice -v failed.")
         }
 
         let previousKeep = ProcessInfo.processInfo.environment["AUTO_SAGE_KEEP_ARTIFACTS"]
