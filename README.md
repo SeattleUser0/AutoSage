@@ -12,7 +12,8 @@ AutoSage is a Swift HTTP backend that exposes OpenAI-compatible routes plus a de
 
 ## Quickstart
 ```bash
-cd "/Users/jeremiahconner/Documents/CodeX Projects/AutoSage"
+git clone https://github.com/SeattleUser0/AutoSage.git
+cd AutoSage
 swift build
 swift run AutoSageServer --host 127.0.0.1 --port 8080
 ```
