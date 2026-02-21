@@ -94,6 +94,20 @@ curl -s http://127.0.0.1:8080/v1/chat/completions \
   }'
 ```
 
+## OpenAPI
+YAML is the source of truth: `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/openapi/openapi.yaml`.
+`/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/openapi/openapi.json` is the generated JSON form.
+
+### `GET /openapi.yaml`
+```bash
+curl -s http://127.0.0.1:8080/openapi.yaml
+```
+
+### `GET /openapi.json`
+```bash
+curl -s http://127.0.0.1:8080/openapi.json
+```
+
 ## Tooling
 Tool naming, stability levels, and the normalized ToolResult contract are documented in `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/docs/TOOLS.md`.
 

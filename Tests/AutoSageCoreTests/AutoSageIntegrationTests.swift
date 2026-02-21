@@ -436,6 +436,35 @@ final class AutoSageIntegrationTests: XCTestCase {
         XCTAssertEqual(taggedTools.tools.map(\.name), taggedTools.tools.map(\.name).sorted())
     }
 
+    func testOpenAPISpecEndpointsExposeRequiredPaths() throws {
+        let router = Router()
+
+        let yamlResponse = router.handle(HTTPRequest(method: "GET", path: "/openapi.yaml", body: nil))
+        XCTAssertEqual(yamlResponse.status, 200)
+        XCTAssertEqual(yamlResponse.headers["Content-Type"], "application/yaml")
+        XCTAssertEqual(yamlResponse.headers["Cache-Control"], "no-cache")
+        let yamlText = try XCTUnwrap(String(data: yamlResponse.body, encoding: .utf8))
+        XCTAssertTrue(yamlText.contains("openapi: 3."))
+
+        let jsonResponse = router.handle(HTTPRequest(method: "GET", path: "/openapi.json", body: nil))
+        XCTAssertEqual(jsonResponse.status, 200)
+        XCTAssertEqual(jsonResponse.headers["Content-Type"], "application/json")
+        XCTAssertEqual(jsonResponse.headers["Cache-Control"], "no-cache")
+
+        let jsonObject = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: jsonResponse.body, options: []) as? [String: Any]
+        )
+        XCTAssertNotNil(jsonObject["openapi"])
+
+        let paths = try XCTUnwrap(jsonObject["paths"] as? [String: Any])
+        let healthz = try XCTUnwrap(paths["/healthz"] as? [String: Any])
+        XCTAssertNotNil(healthz["get"])
+        let tools = try XCTUnwrap(paths["/v1/tools"] as? [String: Any])
+        XCTAssertNotNil(tools["get"])
+        let execute = try XCTUnwrap(paths["/v1/tools/execute"] as? [String: Any])
+        XCTAssertNotNil(execute["post"])
+    }
+
     func testExecuteEndpointReturnsToolResultContractOnErrors() throws {
         let router = Router()
 

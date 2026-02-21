@@ -1,0 +1,438 @@
+openapi: 3.0.3
+info:
+  title: AutoSage HTTP API
+  version: 0.1.0
+  description: >-
+    AutoSage exposes a minimal OpenAI-compatible surface plus a tool registry and
+    execution endpoint.
+servers:
+  - url: http://127.0.0.1:8080
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      operationId: getHealthz
+      responses:
+        '200':
+          description: Server health payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    name: AutoSage
+                    version: 0.1.0
+  /v1/tools:
+    get:
+      summary: List tools
+      operationId: listTools
+      parameters:
+        - name: stability
+          in: query
+          required: false
+          description: Return only tools with this stability classification.
+          schema:
+            $ref: '#/components/schemas/ToolStability'
+        - name: tags
+          in: query
+          required: false
+          description: Comma-separated tags. A tool matches when any tag matches.
+          schema:
+            type: string
+            example: mesh,pde
+      responses:
+        '200':
+          description: Tool descriptors sorted by tool name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicToolsResponse'
+              examples:
+                tools:
+                  value:
+                    tools:
+                      - name: echo_json
+                        version: '1'
+                        stability: stable
+                        tags:
+                          - deterministic
+                          - util
+                        description: Echoes a message deterministically and optionally repeats it n times.
+                        input_schema:
+                          type: object
+                          description: Input parameters for echo_json.
+                          properties:
+                            message:
+                              type: string
+                              description: Message to echo.
+                            n:
+                              type: integer
+                              description: Optional repeat count. Defaults to 1.
+                              minimum: 1
+                              maximum: 64
+                          required:
+                            - message
+                          additionalProperties: false
+        '400':
+          description: Invalid filter query value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                bad_stability:
+                  value:
+                    error:
+                      code: invalid_request
+                      message: Invalid stability query value.
+                      details:
+                        field: stability
+                        accepted:
+                          - stable
+                          - experimental
+                          - deprecated
+  /v1/tools/execute:
+    post:
+      summary: Execute a tool
+      operationId: executeTool
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolExecuteRequest'
+            examples:
+              echo_json:
+                value:
+                  tool: echo_json
+                  input:
+                    message: hello
+                    n: 2
+      responses:
+        '200':
+          description: Tool finished with status ok.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResult'
+              examples:
+                ok:
+                  value:
+                    status: ok
+                    solver: echo_json
+                    summary: Echoed message 2 time(s).
+                    stdout: ''
+                    stderr: ''
+                    exit_code: 0
+                    artifacts: []
+                    metrics:
+                      repeat_count: 2
+                      job_id: job_0001
+                    output:
+                      message: hello
+                      repeat:
+                        - hello
+                        - hello
+        '400':
+          description: Request body is invalid.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResult'
+              examples:
+                invalid_request:
+                  value:
+                    status: error
+                    solver: unknown
+                    summary: Tool execution request body is invalid JSON.
+                    stdout: ''
+                    stderr: Failed to decode request JSON.
+                    exit_code: 1
+                    artifacts: []
+                    metrics:
+                      error_code: invalid_request
+                    output: null
+        '404':
+          description: Unknown tool name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResult'
+              examples:
+                unknown_tool:
+                  value:
+                    status: error
+                    solver: does.not.exist
+                    summary: "Unsupported tool: does.not.exist."
+                    stdout: ''
+                    stderr: Unsupported tool.
+                    exit_code: 1
+                    artifacts: []
+                    metrics:
+                      error_code: unknown_tool
+                    output: null
+        '500':
+          description: Tool execution failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolResult'
+  /openapi.yaml:
+    get:
+      summary: Fetch OpenAPI YAML
+      operationId: getOpenAPIYaml
+      responses:
+        '200':
+          description: OpenAPI YAML source of truth.
+          content:
+            application/yaml:
+              schema:
+                type: string
+                example: "openapi: 3.0.3"
+  /openapi.json:
+    get:
+      summary: Fetch OpenAPI JSON
+      operationId: getOpenAPIJson
+      responses:
+        '200':
+          description: OpenAPI JSON representation.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+              examples:
+                header:
+                  value:
+                    openapi: 3.0.3
+                    info:
+                      title: AutoSage HTTP API
+                      version: 0.1.0
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      description: Health check payload.
+      required:
+        - status
+        - name
+        - version
+      properties:
+        status:
+          type: string
+          description: Health state string.
+          example: ok
+        name:
+          type: string
+          description: Service name.
+          example: AutoSage
+        version:
+          type: string
+          description: Service version.
+          example: 0.1.0
+    ErrorResponse:
+      type: object
+      description: Error payload wrapper.
+      required:
+        - error
+      properties:
+        error:
+          type: object
+          description: Error detail object.
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              description: Error code identifier.
+            message:
+              type: string
+              description: Human-readable error message.
+            details:
+              type: object
+              description: Optional structured details.
+              additionalProperties: true
+    ToolStability:
+      type: string
+      description: Tool maturity classification.
+      enum:
+        - stable
+        - experimental
+        - deprecated
+    ToolDescriptor:
+      type: object
+      description: Descriptor exposed by GET /v1/tools.
+      required:
+        - name
+        - version
+        - stability
+        - description
+        - input_schema
+      properties:
+        name:
+          type: string
+          description: Tool identifier.
+        version:
+          type: string
+          description: Registry metadata version for this tool descriptor.
+          example: '1'
+        stability:
+          $ref: '#/components/schemas/ToolStability'
+        tags:
+          type: array
+          description: Optional tags used for discovery and filtering.
+          items:
+            type: string
+        description:
+          type: string
+          description: Human-readable tool description.
+        input_schema:
+          $ref: '#/components/schemas/ArbitraryObject'
+    PublicToolsResponse:
+      type: object
+      description: Tool registry response.
+      required:
+        - tools
+      properties:
+        tools:
+          type: array
+          description: Tools sorted lexicographically by name.
+          items:
+            $ref: '#/components/schemas/ToolDescriptor'
+    ToolExecutionLimits:
+      type: object
+      description: Optional tool execution caps.
+      required:
+        - timeout_ms
+        - max_stdout_bytes
+        - max_stderr_bytes
+        - max_artifact_bytes
+        - max_artifacts
+        - max_summary_characters
+      properties:
+        timeout_ms:
+          type: integer
+          description: Maximum runtime in milliseconds.
+          minimum: 1
+        max_stdout_bytes:
+          type: integer
+          description: Maximum UTF-8 bytes kept for stdout.
+          minimum: 1
+        max_stderr_bytes:
+          type: integer
+          description: Maximum UTF-8 bytes kept for stderr.
+          minimum: 1
+        max_artifact_bytes:
+          type: integer
+          description: Maximum bytes allowed per artifact.
+          minimum: 1
+        max_artifacts:
+          type: integer
+          description: Maximum artifact count returned.
+          minimum: 1
+        max_summary_characters:
+          type: integer
+          description: Maximum summary character count.
+          minimum: 16
+    ToolExecuteContextRequest:
+      type: object
+      description: Optional execution context overrides.
+      properties:
+        limits:
+          $ref: '#/components/schemas/ToolExecutionLimits'
+    ToolExecuteRequest:
+      type: object
+      description: Request payload for POST /v1/tools/execute.
+      required:
+        - tool
+      properties:
+        tool:
+          type: string
+          description: Tool name as listed by GET /v1/tools.
+        input:
+          $ref: '#/components/schemas/ArbitraryJSON'
+        context:
+          $ref: '#/components/schemas/ToolExecuteContextRequest'
+    ToolArtifact:
+      type: object
+      description: Artifact descriptor returned by a tool run.
+      required:
+        - name
+        - path
+        - mime_type
+        - bytes
+      properties:
+        name:
+          type: string
+          description: Artifact file name.
+        path:
+          type: string
+          description: API path for artifact retrieval.
+        mime_type:
+          type: string
+          description: Artifact MIME type.
+        bytes:
+          type: integer
+          description: Artifact size in bytes.
+          minimum: 0
+    ToolResult:
+      type: object
+      description: Normalized tool execution result shape.
+      required:
+        - status
+        - solver
+        - summary
+        - stdout
+        - stderr
+        - exit_code
+        - artifacts
+        - metrics
+      properties:
+        status:
+          type: string
+          description: Tool status, typically ok or error.
+        solver:
+          type: string
+          description: Tool/solver identifier.
+        summary:
+          type: string
+          description: Short human summary.
+        stdout:
+          type: string
+          description: Captured stdout (possibly truncated).
+        stderr:
+          type: string
+          description: Captured stderr (possibly truncated).
+        exit_code:
+          type: integer
+          description: Exit code semantic for the run.
+        artifacts:
+          type: array
+          description: Artifacts produced by the tool.
+          items:
+            $ref: '#/components/schemas/ToolArtifact'
+        metrics:
+          type: object
+          description: Execution metrics and bookkeeping values.
+          additionalProperties: true
+        output:
+          $ref: '#/components/schemas/ArbitraryJSON'
+    ArbitraryObject:
+      type: object
+      description: Arbitrary JSON object value.
+      additionalProperties: true
+    ArbitraryJSON:
+      description: Any JSON value.
+      nullable: true
+      oneOf:
+        - type: object
+          additionalProperties: true
+        - type: array
+          items: {}
+        - type: string
+        - type: number
+        - type: boolean

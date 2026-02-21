@@ -80,6 +80,10 @@ let package = Package(
         "CVTKFFI",
         "COpen3DFFI",
         "CNgspiceFFI",
+      ],
+      resources: [
+        // Bundled OpenAPI docs served by /openapi.yaml and /openapi.json.
+        .process("OpenAPI"),
       ]
     ),
     .executableTarget(

@@ -61,6 +61,10 @@ public struct Router {
             return handleListTools(request)
         case ("GET", "/admin"):
             return htmlResponse(AdminDashboard.html)
+        case ("GET", "/openapi.yaml"):
+            return handleOpenAPISpec(filename: "openapi", fileExtension: "yaml", contentType: "application/yaml")
+        case ("GET", "/openapi.json"):
+            return handleOpenAPISpec(filename: "openapi", fileExtension: "json", contentType: "application/json")
         case ("GET", "/v1/agent/config"):
             return handleAgentConfig()
         case ("GET", "/v1/admin/logs"):
@@ -98,6 +102,34 @@ public struct Router {
     private func handleAgentConfig() -> HTTPResponse {
         let payload = AgentOrchestratorBootstrap.makeConfig(registry: registry)
         return jsonResponse(payload)
+    }
+
+    private func handleOpenAPISpec(filename: String, fileExtension: String, contentType: String) -> HTTPResponse {
+        let candidates: [(resource: String, ext: String, subdirectory: String?)] = [
+            (filename, fileExtension, nil),
+            (filename, fileExtension, "OpenAPI")
+        ]
+        for candidate in candidates {
+            if let url = Bundle.module.url(
+                forResource: candidate.resource,
+                withExtension: candidate.ext,
+                subdirectory: candidate.subdirectory
+            ), let data = try? Data(contentsOf: url) {
+                return HTTPResponse(
+                    status: 200,
+                    headers: [
+                        "Content-Type": contentType,
+                        "Cache-Control": "no-cache"
+                    ],
+                    body: data
+                )
+            }
+        }
+        return errorResponse(
+            code: "not_found",
+            message: "OpenAPI specification not found.",
+            status: 404
+        )
     }
 
     private func handleListTools(_ request: HTTPRequest) -> HTTPResponse {
