@@ -66,6 +66,12 @@ Regular Updates: Additional solvers (e.g., advanced CFD kernels, thermal radiati
 
 Custom Integration: If you have a specific use case or a solver you’d like to see prioritized, let’s discuss it.
 
+## 🧪 The "Statistical Scout" Pipeline (Future)
+We are working on implementing a multi-stage optimization workflow that prioritizes computational efficiency:
+* **Stage 1: Sparse Sampling:** Use the cluster to generate a sparse Design of Experiments (DOE).
+* **Stage 2: Surrogate Inference:** Utilize **scikit-learn** to build meta-models that allow the agent to explore 10^5 design variations instantly.
+* **Stage 3: Targeted Finalization:** Commit high-fidelity solver resources only to the most promising design candidates identified by the statistical model.
+
 ## 🤝 Community & Contribution
 This project is built for the "geeks" who want to push the boundaries of what autonomous systems can build in the real world.
 
