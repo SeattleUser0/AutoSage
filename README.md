@@ -54,4 +54,4 @@ AutoSage is designed to act as the "engineering backend" for:
 ---
 
 ## 📜 License
-[Insert License Choice - e.g., MIT]
+MIT
