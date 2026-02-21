@@ -3,7 +3,7 @@
 **AutoSage** is a high-performance, multi-physics simulation server designed specifically for **LLM Agent workflows**. It transforms complex engineering tasks—ranging from structural analysis (FEA) to fluid dynamics (CFD) and circuit simulation—into a standardized API that autonomous agents can navigate natively.
 
 ## 🌟 The Core Philosophy
-Traditional simulation software requires a human-in-the-loop to click buttons and manage mesh files. **AutoSage** runs as a standalone server with an **OpenAI-compatible interface**, allowing agents like **OpenHands**, **Plandex**, or custom GPT-based orchestrators to:
+Traditional simulation software requires a human-in-the-loop to click buttons and manage mesh files. **AutoSage** runs as a standalone server with an **OpenAI-compatible interface**, allowing agents like **OpenClaw**, **OpenHands**, **Plandex**, or custom GPT-based orchestrators to:
 1.  **Generate** geometry through code.
 2.  **Execute** multi-physics simulations via tool-calling.
 3.  **Analyze** results using real-time SSE (Server-Sent Events) feedback.
@@ -23,7 +23,7 @@ AutoSage is built for engineers who design physical systems. It moves beyond "so
 ## 🌐 Large-Scale Orchestration
 AutoSage is architected for distributed environments. By deploying as a cluster, it enables:
 * **Asynchronous Parallelism:** Offload thousands of simultaneous solver tasks via the agentic layer.
-* **Agent-Directed Branching:** Use the Open Claw stack to dynamically allocate nodes for Monte Carlo simulations or wide-band evolutionary design optimization.
+* **Agent-Directed Branching:** Use the OpenClaw stack to dynamically allocate nodes for Monte Carlo simulations or wide-band evolutionary design optimization.
 * **Massive Cloud Capacity:** Built to scale from a single Mac Pro to 10,000+ Linux nodes for "freakish" computational power.
 
 ---
@@ -89,7 +89,7 @@ If you have experience in Geometric Deep Learning, Neural Symbolic AI, or CAD Ke
 
 Contact: If you’re interested in collaborating or want to discuss how AutoSage can fit into a specific agent-led workflow, please reach out.
 
-Note: When paired with a high-autonomy stack like Open Claw, this tool represents a significant shift from manual engineering to Bobiverse-level engineering.
+Note: When paired with a high-autonomy stack like OpenClaw, this tool represents a significant shift from manual engineering to Bobiverse-level engineering.
 
 ---
 
