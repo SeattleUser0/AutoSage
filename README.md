@@ -1,103 +1,57 @@
-# AutoSage
+# AutoSage 🧙‍♂️⚙️
 
-AutoSage is a Swift backend that exposes OpenAI-compatible HTTP endpoints for CAD/CAE orchestration.  
-It provides a tool-calling surface for native solver/modeling bridges (MFEM, ngspice, Open3D, VTK, and others) while keeping orchestration deterministic and workspace-based.
+**AutoSage** is a high-performance, multi-physics simulation server designed specifically for **LLM Agent workflows**. It transforms complex engineering tasks—ranging from structural analysis (FEA) to fluid dynamics (CFD) and circuit simulation—into a standardized API that autonomous agents can navigate natively.
 
-## Project Layout
-- `Sources/AutoSageCore`: shared server types, router, tool registry, job/session systems.
-- `Sources/AutoSageServer`: executable HTTP server with CLI options.
-- `Sources/AutoSageControl`: macOS SwiftUI control panel.
-- `Native/`: C/C++/Rust FFI bridge code.
-- `.github/workflows/`: CI and release workflows.
+## 🌟 The Core Philosophy
+Traditional simulation software requires a human-in-the-loop to click buttons and manage mesh files. **AutoSage** runs as a standalone server with an **OpenAI-compatible interface**, allowing agents like **OpenHands**, **Plandex**, or custom GPT-based orchestrators to:
+1.  **Generate** geometry through code.
+2.  **Execute** multi-physics simulations via tool-calling.
+3.  **Analyze** results using real-time SSE (Server-Sent Events) feedback.
 
-## Prerequisites
-- macOS or Debian/Ubuntu Linux.
-- Swift toolchain (macOS via Xcode CLT; Linux via your Swift install process).
-- Build dependencies installed by `setup.sh`.
+---
 
-## Setup
-Run platform dependency installation:
+## 🛠 Key Features
+* **Agent-First Architecture:** Exposes tools via a standard OpenAI-style JSON schema for seamless integration with existing agent frameworks.
+* **Multi-Physics Solver Suite:** High-fidelity native FFI bridges to:
+    * **MFEM:** High-order finite element analysis.
+    * **Open3D:** Point cloud and 3D geometry processing.
+    * **VTK:** Professional-grade scientific visualization and rendering.
+    * **ngspice:** Industry-standard analog circuit simulation.
+* **Cross-Platform Performance:** Native Swift implementation optimized for **macOS (Apple Silicon)** and **Linux (Headless/Docker)**.
+* **Real-time Orchestration:** Streaming logs and state updates allow agents to "see" the simulation progress and correct errors mid-workflow.
 
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+Ensure you have the required native libraries installed. We provide a universal setup script for both macOS and Linux:
 ```bash
 chmod +x setup.sh
 ./setup.sh
 ```
 
-## Build
-Build the Swift package:
-
+### 2. Build & Run
+Compile the backend server:
 ```bash
-swift build
+swift build -c release
+swift run AutoSageServer --port 8080
 ```
 
-Build native bridge artifacts:
+### 3. Connect Your Agent
+Point your agent framework to the AutoSage endpoint:
+* **Base URL:** `http://localhost:8080/v1`
+* **API Key:** `local-development` (or as configured)
 
-```bash
-make clean-native
-make install-native-libs
-```
+---
 
-## Run Server
-Start with defaults (`127.0.0.1:8080`):
+## 🏗 Supported Agent Frameworks
+AutoSage is designed to act as the "engineering backend" for:
+* **OpenHands (formerly OpenDevin):** For autonomous software/hardware co-design.
+* **Plandex:** For complex, multi-step engineering project planning.
+* **Custom Agents:** Any framework using LangChain, Semantic Kernel, or raw OpenAI SDKs.
 
-```bash
-swift run AutoSageServer
-```
+---
 
-See CLI options:
-
-```bash
-swift run AutoSageServer --help
-```
-
-Common examples:
-
-```bash
-swift run AutoSageServer --host 0.0.0.0 --port 8080 --log-level info
-swift run AutoSageServer --host 127.0.0.1 --port 9000 --verbose
-```
-
-## Test
-Run all Swift tests:
-
-```bash
-swift test
-```
-
-Run integration tests only:
-
-```bash
-swift test --filter AutoSageIntegrationTests
-```
-
-## API Quick Start
-- Health: `GET /healthz`
-- Responses API: `POST /v1/responses`
-- Chat Completions API: `POST /v1/chat/completions`
-- Agent bootstrap config: `GET /v1/agent/config`
-- Sessions create: `POST /v1/sessions`
-- Sessions get: `GET /v1/sessions/{session_id}`
-- Sessions chat: `POST /v1/sessions/{session_id}/chat` (supports SSE)
-- Sessions assets: `GET /v1/sessions/{session_id}/assets/{asset_path...}`
-- Admin dashboard: `GET /admin`
-- Admin logs: `GET /v1/admin/logs`
-- Admin clear jobs: `POST /v1/admin/clear-jobs`
-
-Example:
-
-```bash
-curl -s http://127.0.0.1:8080/healthz
-```
-
-## macOS Control Panel vs Web Admin
-- `AutoSageControl` (macOS app): native SwiftUI desktop control for start/stop/reset and log viewing.
-- `AutoSageControl` cleanup path: calls backend `POST /v1/admin/clear-jobs`.
-- `AutoSageControl` run command: `swift run AutoSageControl`.
-- `/admin` Web Admin: browser dashboard served by `AutoSageServer`.
-- `/admin` platform support: macOS and Linux.
-- `/admin` capabilities: status, log polling, and "Clear Jobs".
-- `/admin` URL: `http://127.0.0.1:8080/admin`.
-
-## License
-- Project license: MIT (`LICENSE`).
-- Third-party notice file: `THIRD_PARTY_NOTICES.md`.
+## 📜 License
+[Insert License Choice - e.g., MIT]
