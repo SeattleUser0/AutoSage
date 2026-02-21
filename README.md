@@ -10,15 +10,13 @@ Traditional simulation software requires a human-in-the-loop to click buttons an
 
 ---
 
-## 🛠 Key Features
-* **Agent-First Architecture:** Exposes tools via a standard OpenAI-style JSON schema for seamless integration with existing agent frameworks.
-* **Multi-Physics Solver Suite:** High-fidelity native FFI bridges to:
-    * **MFEM:** High-order finite element analysis.
-    * **Open3D:** Point cloud and 3D geometry processing.
-    * **VTK:** Professional-grade scientific visualization and rendering.
-    * **ngspice:** Industry-standard analog circuit simulation.
-* **Cross-Platform Performance:** Native Swift implementation optimized for **macOS (Apple Silicon)** and **Linux (Headless/Docker)**.
-* **Real-time Orchestration:** Streaming logs and state updates allow agents to "see" the simulation progress and correct errors mid-workflow.
+## 🛠 Key Features for Real-World Engineering
+AutoSage is built for engineers who design physical systems. It moves beyond "software logic" into high-fidelity physical simulation:
+
+* **Multiphysics Solver Suite:** Directly interfaces with C++ kernels to solve real-world problems in structural integrity, heat transfer, and fluid dynamics.
+* **FEA/FEM/CFD Integration:** Native FFI bridges to **MFEM** and **Open3D** for high-order analysis and geometric validation.
+* **Electronic Systems Simulation:** Full **ngspice** integration for analog circuit validation and power system design.
+* **Agent-Operated Hardware Design:** Specifically built for agents like **Open Claw** to perform autonomous validation of mechanical assemblies and structural load cases.
 
 ---
 
@@ -51,6 +49,23 @@ AutoSage acts as the "engineering brains" for high-autonomy agents. It is specif
 * **OpenHands (formerly OpenDevin):** For autonomous software/hardware co-design and iterative prototyping.
 * **Plandex:** For long-running, multi-step engineering project planning that requires validated simulation checkpoints.
 * **Custom Agents:** Any framework using LangChain, Semantic Kernel, or raw OpenAI SDKs.
+
+---
+## 🛠 Roadmap & Future Solvers
+AutoSage is an evolving platform. We are committed to expanding the solver library to cover more specialized physics and engineering domains.
+
+Regular Updates: Additional solvers (e.g., advanced CFD kernels, thermal radiation models, and topology optimization) will be added on a regular basis. Check back often for new capabilities.
+
+Custom Integration: If you have a specific use case or a solver you’d like to see prioritized, let’s discuss it.
+
+## 🤝 Community & Contribution
+This project is built for the "geeks" who want to push the boundaries of what autonomous systems can build in the real world.
+
+Contribute: If you want to dive into the C++ bridges, optimize the Swift concurrency model, or add a new solver to the stack, pull requests are welcome.
+
+Contact: If you’re interested in collaborating or want to discuss how AutoSage can fit into a specific agent-led workflow, please reach out.
+
+Note: When paired with a high-autonomy stack like Open Claw, this tool represents a significant shift from manual engineering to Bobiverse-level engineering.
 
 ---
 
