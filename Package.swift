@@ -91,7 +91,7 @@ let package = Package(
             name: "AutoSageCoreTests",
             dependencies: ["AutoSageCore"],
             resources: [
-                .copy("Fixtures")
+                .process("Fixtures")
             ]
         )
     ]
