@@ -170,8 +170,21 @@ final class AutoSageIntegrationTests: XCTestCase {
     }
 
     private func loadFixtureOBJ(named name: String) throws -> String {
-        guard let fixtureURL = Bundle.module.url(forResource: name, withExtension: "obj", subdirectory: "Fixtures") else {
-            throw AutoSageError(code: "invalid_test_data", message: "Fixture not found: \(name).obj")
+        let fixtureURL =
+            Bundle.module.url(forResource: name, withExtension: "obj")
+            ?? Bundle.module.url(forResource: name, withExtension: "obj", subdirectory: "Fixtures")
+
+        guard let fixtureURL else {
+            let topLevel = (Bundle.module.urls(forResourcesWithExtension: "obj", subdirectory: nil) ?? [])
+                .map(\.lastPathComponent)
+                .sorted()
+            let fixturesSubdir = (Bundle.module.urls(forResourcesWithExtension: "obj", subdirectory: "Fixtures") ?? [])
+                .map(\.lastPathComponent)
+                .sorted()
+            throw AutoSageError(
+                code: "invalid_test_data",
+                message: "Fixture not found: \(name).obj. obj@root=\(topLevel), obj@Fixtures=\(fixturesSubdir)"
+            )
         }
         return try String(contentsOf: fixtureURL, encoding: .utf8)
     }
