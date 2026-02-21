@@ -197,6 +197,8 @@ final class HTTPServer {
         switch response.status {
         case 200: statusText = "OK"
         case 400: statusText = "Bad Request"
+        case 413: statusText = "Payload Too Large"
+        case 429: statusText = "Too Many Requests"
         case 404: statusText = "Not Found"
         case 500: statusText = "Internal Server Error"
         default: statusText = "OK"

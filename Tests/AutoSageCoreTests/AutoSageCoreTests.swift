@@ -63,6 +63,59 @@ final class AutoSageCoreTests: XCTestCase {
         return value!
     }
 
+    private func repositoryRootURL() throws -> URL {
+        let fileManager = FileManager.default
+        var candidate = URL(fileURLWithPath: fileManager.currentDirectoryPath, isDirectory: true)
+        for _ in 0..<8 {
+            let package = candidate.appendingPathComponent("Package.swift")
+            let openapi = candidate.appendingPathComponent("openapi/openapi.yaml")
+            if fileManager.fileExists(atPath: package.path), fileManager.fileExists(atPath: openapi.path) {
+                return candidate
+            }
+            let parent = candidate.deletingLastPathComponent()
+            if parent.path == candidate.path {
+                break
+            }
+            candidate = parent
+        }
+        throw AutoSageError(code: "invalid_test_data", message: "Could not locate repository root for contract tests.")
+    }
+
+    private func readTextFile(at relativePath: String) throws -> String {
+        let root = try repositoryRootURL()
+        let fileURL = root.appendingPathComponent(relativePath)
+        return try String(contentsOf: fileURL, encoding: .utf8)
+    }
+
+    private func yamlRootValue(for key: String, in text: String) -> String? {
+        for line in text.components(separatedBy: .newlines) {
+            if line.hasPrefix("\(key):") {
+                let value = line.dropFirst("\(key):".count).trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.isEmpty ? nil : value
+            }
+        }
+        return nil
+    }
+
+    private func yamlInfoValue(for key: String, in text: String) -> String? {
+        let lines = text.components(separatedBy: .newlines)
+        var inInfo = false
+        for line in lines {
+            if line.hasPrefix("info:") {
+                inInfo = true
+                continue
+            }
+            if inInfo, !line.hasPrefix("  "), !line.trimmingCharacters(in: .whitespaces).isEmpty {
+                break
+            }
+            if inInfo, line.hasPrefix("  \(key):") {
+                let value = line.dropFirst("  \(key):".count).trimmingCharacters(in: .whitespacesAndNewlines)
+                return value.trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            }
+        }
+        return nil
+    }
+
     private func asObject(_ value: JSONValue?) -> [String: JSONValue]? {
         guard case .object(let object)? = value else { return nil }
         return object
@@ -744,6 +797,74 @@ final class AutoSageCoreTests: XCTestCase {
             XCTFail(
                 """
                 Tool metadata/schema audit failed (\(failures.count) issue(s)):
+                - \(failures.joined(separator: "\n- "))
+                """
+            )
+        }
+    }
+
+    func testOpenAPIYamlContainsRequiredContractTokens() throws {
+        let yaml = try readTextFile(at: "openapi/openapi.yaml")
+        XCTAssertTrue(yaml.contains("openapi: 3."), "openapi version marker is missing.")
+        XCTAssertTrue(yaml.contains("/healthz:"), "Missing /healthz path.")
+        XCTAssertTrue(yaml.contains("/v1/tools:"), "Missing /v1/tools path.")
+        XCTAssertTrue(yaml.contains("/v1/tools/execute:"), "Missing /v1/tools/execute path.")
+        XCTAssertTrue(yaml.contains("/healthz:\n    get:"), "Missing GET method for /healthz.")
+        XCTAssertTrue(yaml.contains("/v1/tools:\n    get:"), "Missing GET method for /v1/tools.")
+        XCTAssertTrue(yaml.contains("/v1/tools/execute:\n    post:"), "Missing POST method for /v1/tools/execute.")
+        XCTAssertTrue(yaml.contains("#/components/schemas/ToolResult"), "ToolResult schema reference is missing.")
+    }
+
+    func testOpenAPIYamlAndJSONShareCoreInvariants() throws {
+        let yaml = try readTextFile(at: "openapi/openapi.yaml")
+        let jsonText = try readTextFile(at: "openapi/openapi.json")
+        let jsonData = Data(jsonText.utf8)
+        let jsonObject = try XCTUnwrap(try JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
+
+        let yamlVersion = try XCTUnwrap(yamlRootValue(for: "openapi", in: yaml))
+        let yamlTitle = try XCTUnwrap(yamlInfoValue(for: "title", in: yaml))
+        let yamlInfoVersion = try XCTUnwrap(yamlInfoValue(for: "version", in: yaml))
+
+        let jsonVersion = try XCTUnwrap(jsonObject["openapi"] as? String)
+        let jsonInfo = try XCTUnwrap(jsonObject["info"] as? [String: Any])
+        let jsonTitle = try XCTUnwrap(jsonInfo["title"] as? String)
+        let jsonInfoVersion = try XCTUnwrap(jsonInfo["version"] as? String)
+        let jsonPaths = try XCTUnwrap(jsonObject["paths"] as? [String: Any])
+
+        XCTAssertEqual(yamlVersion, jsonVersion)
+        XCTAssertEqual(yamlTitle, jsonTitle)
+        XCTAssertEqual(yamlInfoVersion, jsonInfoVersion)
+        XCTAssertNotNil(jsonPaths["/healthz"])
+        XCTAssertNotNil(jsonPaths["/v1/tools"])
+        XCTAssertNotNil(jsonPaths["/v1/tools/execute"])
+    }
+
+    func testProfessionalFilesHaveReasonableLineLengths() throws {
+        let root = try repositoryRootURL()
+        let trackedFiles = [
+            "Package.swift",
+            ".github/workflows/ci.yml",
+            "openapi/openapi.yaml",
+            "README.md",
+            "docs/TOOLS.md"
+        ]
+        let maxLineLength = 400
+        var failures: [String] = []
+
+        for relativePath in trackedFiles {
+            let url = root.appendingPathComponent(relativePath)
+            let text = try String(contentsOf: url, encoding: .utf8)
+            for (index, line) in text.components(separatedBy: .newlines).enumerated() {
+                if line.count > maxLineLength {
+                    failures.append("\(relativePath):\(index + 1) has \(line.count) chars")
+                }
+            }
+        }
+
+        if !failures.isEmpty {
+            XCTFail(
+                """
+                Found lines over \(maxLineLength) characters:
                 - \(failures.joined(separator: "\n- "))
                 """
             )

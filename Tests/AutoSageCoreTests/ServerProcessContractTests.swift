@@ -90,13 +90,23 @@ final class ServerProcessContractTests: XCTestCase {
 
         let health = try sendRequest(port: port, method: "GET", path: "/healthz")
         XCTAssertEqual(health.response.statusCode, 200)
+        XCTAssertNotNil(health.response.value(forHTTPHeaderField: "X-Request-Id"))
         let healthPayload = try JSONCoding.makeDecoder().decode(HealthResponse.self, from: health.data)
         XCTAssertEqual(healthPayload.status, "ok")
         XCTAssertEqual(healthPayload.name, "AutoSage")
         XCTAssertFalse(healthPayload.version.isEmpty)
 
+        let openapi = try sendRequest(port: port, method: "GET", path: "/openapi.yaml")
+        XCTAssertEqual(openapi.response.statusCode, 200)
+        let openapiText = try XCTUnwrap(String(data: openapi.data, encoding: .utf8))
+        XCTAssertTrue(openapiText.contains("openapi: 3."))
+        XCTAssertTrue(openapiText.contains("/healthz:"))
+        XCTAssertTrue(openapiText.contains("/v1/tools:"))
+        XCTAssertTrue(openapiText.contains("/v1/tools/execute:"))
+
         let tools = try sendRequest(port: port, method: "GET", path: "/v1/tools")
         XCTAssertEqual(tools.response.statusCode, 200)
+        XCTAssertNotNil(tools.response.value(forHTTPHeaderField: "X-Request-Id"))
         let toolsPayload = try JSONCoding.makeDecoder().decode(PublicToolsResponse.self, from: tools.data)
         let toolNames = toolsPayload.tools.map(\.name)
         XCTAssertTrue(toolNames.contains("echo_json"))
@@ -115,10 +125,12 @@ final class ServerProcessContractTests: XCTestCase {
             body: executeRequestBody
         )
         XCTAssertEqual(executeOK.response.statusCode, 200)
+        XCTAssertNotNil(executeOK.response.value(forHTTPHeaderField: "X-Request-Id"))
         let executeOKPayload = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: executeOK.data)
         XCTAssertEqual(executeOKPayload.status, "ok")
         XCTAssertEqual(executeOKPayload.solver, "echo_json")
         XCTAssertEqual(executeOKPayload.exitCode, 0)
+        XCTAssertNotNil(executeOKPayload.metrics["request_id"])
         guard case .object(let output)? = executeOKPayload.output else {
             return XCTFail("Expected output object from echo_json.")
         }

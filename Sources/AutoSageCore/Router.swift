@@ -30,29 +30,77 @@ public struct HTTPResponse {
     }
 }
 
+private final class RequestConcurrencyGate {
+    private let semaphore: DispatchSemaphore
+
+    init(maxConcurrency: Int) {
+        self.semaphore = DispatchSemaphore(value: max(1, maxConcurrency))
+    }
+
+    func tryAcquire() -> Bool {
+        semaphore.wait(timeout: .now()) == .success
+    }
+
+    func release() {
+        semaphore.signal()
+    }
+}
+
 public struct Router {
     public let registry: ToolRegistry
     public let idGenerator: RequestIDGenerator
     public let jobStore: JobStore
     public let sessionStore: SessionStore
     public let sessionOrchestrator: SessionOrchestrating
+    public let maxBodyBytes: Int
+    public let maxConcurrency: Int
+    private let concurrencyGate: RequestConcurrencyGate
 
     public init(
         registry: ToolRegistry = .default,
         idGenerator: RequestIDGenerator = RequestIDGenerator(),
         jobStore: JobStore? = nil,
         sessionStore: SessionStore? = nil,
-        sessionOrchestrator: SessionOrchestrating? = nil
+        sessionOrchestrator: SessionOrchestrating? = nil,
+        maxBodyBytes: Int? = nil,
+        maxConcurrency: Int? = nil
     ) {
+        let resolvedMaxBodyBytes = maxBodyBytes
+            ?? parsePositiveInt(ProcessInfo.processInfo.environment["AUTOSAGE_MAX_BODY_BYTES"])
+            ?? 2_000_000
+        let resolvedMaxConcurrency = maxConcurrency
+            ?? parsePositiveInt(ProcessInfo.processInfo.environment["AUTOSAGE_MAX_CONCURRENCY"])
+            ?? 8
+
         self.registry = registry
         self.idGenerator = idGenerator
         self.jobStore = jobStore ?? JobStore(idGenerator: idGenerator)
         self.sessionStore = sessionStore ?? SessionStore()
         self.sessionOrchestrator = sessionOrchestrator ?? DefaultSessionOrchestrator()
+        self.maxBodyBytes = max(1, resolvedMaxBodyBytes)
+        self.maxConcurrency = max(1, resolvedMaxConcurrency)
+        self.concurrencyGate = RequestConcurrencyGate(maxConcurrency: self.maxConcurrency)
     }
 
     public func handle(_ request: HTTPRequest) -> HTTPResponse {
         let routePath = pathWithoutQuery(request.path)
+        let requestID = incomingRequestID(from: request.headers) ?? UUID().uuidString
+
+        if let oversized = oversizedRequestResponse(request, routePath: routePath, requestID: requestID) {
+            return withRequestIDHeader(oversized, requestID: requestID)
+        }
+
+        guard concurrencyGate.tryAcquire() else {
+            let saturated = saturatedResponse(for: request, routePath: routePath, requestID: requestID)
+            return withRequestIDHeader(saturated, requestID: requestID)
+        }
+        defer { concurrencyGate.release() }
+
+        let response = handleRoutedRequest(request, routePath: routePath, requestID: requestID)
+        return withRequestIDHeader(response, requestID: requestID)
+    }
+
+    private func handleRoutedRequest(_ request: HTTPRequest, routePath: String, requestID: String) -> HTTPResponse {
         switch (request.method, routePath) {
         case ("GET", "/healthz"):
             let response = HealthResponse(status: "ok", name: "AutoSage", version: "0.1.0")
@@ -80,7 +128,7 @@ public struct Router {
         case ("POST", "/v1/jobs"):
             return handleCreateJob(request)
         case ("POST", "/v1/tools/execute"):
-            return handleExecuteTool(request)
+            return handleExecuteTool(request, requestID: requestID)
         case ("POST", _):
             if routePath.hasPrefix("/v1/sessions/") {
                 return handleSessionsPost(request, routePath: routePath)
@@ -99,6 +147,81 @@ public struct Router {
         }
     }
 
+    private func incomingRequestID(from headers: [String: String]) -> String? {
+        let direct = headers["X-Request-Id"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let direct, !direct.isEmpty {
+            return direct
+        }
+        let lower = headers["x-request-id"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let lower, !lower.isEmpty {
+            return lower
+        }
+        if let pair = headers.first(where: { $0.key.lowercased() == "x-request-id" }) {
+            let value = pair.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty { return value }
+        }
+        return nil
+    }
+
+    private func withRequestIDHeader(_ response: HTTPResponse, requestID: String) -> HTTPResponse {
+        var headers = response.headers
+        headers["X-Request-Id"] = requestID
+        return HTTPResponse(status: response.status, headers: headers, body: response.body, stream: response.stream)
+    }
+
+    private func oversizedRequestResponse(_ request: HTTPRequest, routePath: String, requestID: String) -> HTTPResponse? {
+        guard let body = request.body, body.count > maxBodyBytes else {
+            return nil
+        }
+        if request.method == "POST", routePath == "/v1/tools/execute" {
+            let result = Self.makeErrorToolResult(
+                solver: "unknown",
+                summary: "Request body exceeds max size (\(maxBodyBytes) bytes).",
+                stderr: "payload_too_large",
+                errorCode: "payload_too_large",
+                metrics: ["request_id": .string(requestID)]
+            )
+            return toolResultResponse(result, status: 413)
+        }
+        return errorResponse(
+            code: "payload_too_large",
+            message: "Request body exceeds max size (\(maxBodyBytes) bytes).",
+            status: 413
+        )
+    }
+
+    private func saturatedResponse(for request: HTTPRequest, routePath: String, requestID: String) -> HTTPResponse {
+        if request.method == "POST", routePath == "/v1/tools/execute" {
+            let result = Self.makeErrorToolResult(
+                solver: "unknown",
+                summary: "Server is busy; retry shortly.",
+                stderr: "too_many_requests",
+                errorCode: "too_many_requests",
+                metrics: ["request_id": .string(requestID)]
+            )
+            return withAddedHeaders(
+                toolResultResponse(result, status: 429),
+                additions: ["Retry-After": "1"]
+            )
+        }
+        return withAddedHeaders(
+            errorResponse(
+                code: "too_many_requests",
+                message: "Server is busy; retry shortly.",
+                status: 429
+            ),
+            additions: ["Retry-After": "1"]
+        )
+    }
+
+    private func withAddedHeaders(_ response: HTTPResponse, additions: [String: String]) -> HTTPResponse {
+        var headers = response.headers
+        for (key, value) in additions {
+            headers[key] = value
+        }
+        return HTTPResponse(status: response.status, headers: headers, body: response.body, stream: response.stream)
+    }
+
     private func handleAgentConfig() -> HTTPResponse {
         let payload = AgentOrchestratorBootstrap.makeConfig(registry: registry)
         return jsonResponse(payload)
@@ -107,6 +230,7 @@ public struct Router {
     private func handleOpenAPISpec(filename: String, fileExtension: String, contentType: String) -> HTTPResponse {
         let candidates: [(resource: String, ext: String, subdirectory: String?)] = [
             (filename, fileExtension, nil),
+            (filename, fileExtension, "openapi"),
             (filename, fileExtension, "OpenAPI")
         ]
         for candidate in candidates {
@@ -125,10 +249,14 @@ public struct Router {
                 )
             }
         }
+        let discovered = (Bundle.module.urls(forResourcesWithExtension: "yaml", subdirectory: nil) ?? [])
+            .map(\.lastPathComponent)
+            .sorted()
         return errorResponse(
-            code: "not_found",
-            message: "OpenAPI specification not found.",
-            status: 404
+            code: "missing_resource",
+            message: "OpenAPI specification not found. discovered_yaml=\(discovered.joined(separator: ","))",
+            status: 500,
+            details: ["discovered_yaml": .stringArray(discovered)]
         )
     }
 
@@ -171,13 +299,14 @@ public struct Router {
         return jsonResponse(PublicToolsResponse(tools: descriptors))
     }
 
-    private func handleExecuteTool(_ request: HTTPRequest) -> HTTPResponse {
+    private func handleExecuteTool(_ request: HTTPRequest, requestID: String) -> HTTPResponse {
         guard let body = request.body else {
             let result = Self.makeErrorToolResult(
                 solver: "unknown",
                 summary: "Tool execution request is missing a JSON body.",
                 stderr: "Missing request body.",
-                errorCode: "invalid_request"
+                errorCode: "invalid_request",
+                metrics: ["request_id": .string(requestID)]
             )
             return toolResultResponse(result, status: 400)
         }
@@ -190,7 +319,8 @@ public struct Router {
                 solver: "unknown",
                 summary: "Tool execution request body is invalid JSON.",
                 stderr: "Failed to decode request JSON.",
-                errorCode: "invalid_request"
+                errorCode: "invalid_request",
+                metrics: ["request_id": .string(requestID)]
             )
             return toolResultResponse(result, status: 400)
         }
@@ -201,7 +331,8 @@ public struct Router {
                 solver: "unknown",
                 summary: "tool must be a non-empty string.",
                 stderr: "Missing required field: tool.",
-                errorCode: "invalid_request"
+                errorCode: "invalid_request",
+                metrics: ["request_id": .string(requestID)]
             )
             return toolResultResponse(result, status: 400)
         }
@@ -210,7 +341,8 @@ public struct Router {
                 solver: toolName,
                 summary: "Unsupported tool: \(toolName).",
                 stderr: "Unsupported tool.",
-                errorCode: "unknown_tool"
+                errorCode: "unknown_tool",
+                metrics: ["request_id": .string(requestID)]
             )
             return toolResultResponse(result, status: 404)
         }
@@ -230,11 +362,12 @@ public struct Router {
             )
             let normalized = try Self.normalizeToolResult(rawResult, fallbackSolver: toolName)
             let capped = Self.applyExecutionLimits(normalized, limits: limits)
-            let value = try capped.asJSONValue()
-            waitForAsync { await store.completeJob(id: job.id, result: value, summary: capped.summary) }
+            let withRequestID = Self.appendMetrics(capped, additions: ["request_id": .string(requestID)])
+            let value = try withRequestID.asJSONValue()
+            waitForAsync { await store.completeJob(id: job.id, result: value, summary: withRequestID.summary) }
 
-            let httpStatus = capped.status.lowercased() == "ok" ? 200 : 500
-            return toolResultResponse(capped, status: httpStatus)
+            let httpStatus = withRequestID.status.lowercased() == "ok" ? 200 : 500
+            return toolResultResponse(withRequestID, status: httpStatus)
         } catch let error as AutoSageError {
             let status = error.code == "invalid_input" ? 400 : 500
             let result = Self.makeErrorToolResult(
@@ -242,7 +375,10 @@ public struct Router {
                 summary: "Tool execution failed.",
                 stderr: error.message,
                 errorCode: error.code,
-                metrics: ["job_id": .string(job.id)]
+                metrics: [
+                    "job_id": .string(job.id),
+                    "request_id": .string(requestID)
+                ]
             )
             waitForAsync { await store.failJob(id: job.id, error: error) }
             return toolResultResponse(result, status: status)
@@ -252,7 +388,10 @@ public struct Router {
                 summary: "Tool execution failed.",
                 stderr: "Unexpected error during tool execution.",
                 errorCode: "solver_failed",
-                metrics: ["job_id": .string(job.id)]
+                metrics: [
+                    "job_id": .string(job.id),
+                    "request_id": .string(requestID)
+                ]
             )
             waitForAsync {
                 await store.failJob(
@@ -1060,6 +1199,27 @@ public struct Router {
             exitCode: result.exitCode,
             artifacts: artifacts,
             metrics: metrics,
+            output: result.output
+        )
+    }
+
+    private static func appendMetrics(
+        _ result: ToolExecutionResult,
+        additions: [String: JSONValue]
+    ) -> ToolExecutionResult {
+        var merged = result.metrics
+        for (key, value) in additions {
+            merged[key] = value
+        }
+        return ToolExecutionResult(
+            status: result.status,
+            solver: result.solver,
+            summary: result.summary,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+            artifacts: result.artifacts,
+            metrics: merged,
             output: result.output
         )
     }

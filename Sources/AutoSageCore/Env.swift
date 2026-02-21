@@ -9,3 +9,13 @@ public func parsePort(_ value: String?) -> Int? {
     }
     return port
 }
+
+public func parsePositiveInt(_ value: String?) -> Int? {
+    guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+        return nil
+    }
+    guard let parsed = Int(value), parsed > 0 else {
+        return nil
+    }
+    return parsed
+}

@@ -28,6 +28,43 @@ private struct NoisyTool: Tool {
     }
 }
 
+private final class BlockingToolControl: @unchecked Sendable {
+    let started = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+}
+
+private struct BlockingTool: Tool {
+    let name: String = "blocking.tool"
+    let version: String = "1.0.0"
+    let description: String = "Blocks until released to exercise concurrency limits."
+    let jsonSchema: JSONValue = .object([
+        "type": .string("object"),
+        "description": .string("No parameters."),
+        "properties": .object([:]),
+        "required": .array([]),
+        "additionalProperties": .bool(false)
+    ])
+    let control: BlockingToolControl
+
+    func run(input: JSONValue?, context: ToolExecutionContext) throws -> JSONValue {
+        _ = input
+        control.started.signal()
+        _ = control.release.wait(timeout: .now() + 5)
+        let result = ToolExecutionResult(
+            status: "ok",
+            solver: name,
+            summary: "blocking tool completed",
+            stdout: "",
+            stderr: "",
+            exitCode: 0,
+            artifacts: [],
+            metrics: ["job_id": .string(context.jobID)],
+            output: .object(["ok": .bool(true)])
+        )
+        return try result.asJSONValue()
+    }
+}
+
 final class ToolServerContractTests: XCTestCase {
     private func decodeToolResult(from value: JSONValue) throws -> ToolExecutionResult {
         let data = try JSONCoding.makeEncoder().encode(value)
@@ -145,5 +182,86 @@ final class ToolServerContractTests: XCTestCase {
         XCTAssertGreaterThan(stdoutTruncated, 0)
         XCTAssertGreaterThan(stderrTruncated, 0)
         XCTAssertTrue(decoded.summary.contains("limits:"))
+    }
+
+    func testExecuteEndpointEchoesRequestIDAndAddsMetric() throws {
+        let router = Router()
+        let requestID = "req-contract-123"
+        let body = Data(#"{"tool":"echo_json","input":{"message":"hello","n":1}}"#.utf8)
+
+        let response = router.handle(
+            HTTPRequest(
+                method: "POST",
+                path: "/v1/tools/execute",
+                body: body,
+                headers: [
+                    "content-type": "application/json",
+                    "X-Request-Id": requestID
+                ]
+            )
+        )
+
+        XCTAssertEqual(response.status, 200)
+        XCTAssertEqual(response.headers["X-Request-Id"], requestID)
+
+        let decoded = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: response.body)
+        XCTAssertEqual(decoded.status, "ok")
+        XCTAssertEqual(decoded.metrics["request_id"], .string(requestID))
+    }
+
+    func testExecuteEndpointReturns413WhenBodyExceedsLimit() throws {
+        let router = Router(maxBodyBytes: 64)
+        let oversized = String(repeating: "a", count: 512)
+        let body = Data(#"{"tool":"echo_json","input":{"message":"\#(oversized)"}}"#.utf8)
+
+        let response = router.handle(
+            HTTPRequest(
+                method: "POST",
+                path: "/v1/tools/execute",
+                body: body,
+                headers: ["content-type": "application/json"]
+            )
+        )
+
+        XCTAssertEqual(response.status, 413)
+        let decoded = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: response.body)
+        XCTAssertEqual(decoded.status, "error")
+        XCTAssertEqual(decoded.metrics["error_code"], .string("payload_too_large"))
+    }
+
+    func testConcurrencyCapReturns429WhenSaturated() throws {
+        let control = BlockingToolControl()
+        let registry = ToolRegistry(tools: [BlockingTool(control: control)])
+        let router = Router(registry: registry, maxConcurrency: 1)
+        let body = Data(#"{"tool":"blocking.tool","input":{}}"#.utf8)
+        let request = HTTPRequest(
+            method: "POST",
+            path: "/v1/tools/execute",
+            body: body,
+            headers: ["content-type": "application/json"]
+        )
+
+        let queue = DispatchQueue.global(qos: .userInitiated)
+        let group = DispatchGroup()
+        var firstResponse: HTTPResponse?
+
+        group.enter()
+        queue.async {
+            firstResponse = router.handle(request)
+            group.leave()
+        }
+
+        XCTAssertEqual(control.started.wait(timeout: .now() + 2), .success)
+
+        let saturated = router.handle(request)
+        XCTAssertEqual(saturated.status, 429)
+        XCTAssertEqual(saturated.headers["Retry-After"], "1")
+        let saturatedResult = try JSONCoding.makeDecoder().decode(ToolExecutionResult.self, from: saturated.body)
+        XCTAssertEqual(saturatedResult.status, "error")
+        XCTAssertEqual(saturatedResult.metrics["error_code"], .string("too_many_requests"))
+
+        control.release.signal()
+        group.wait()
+        XCTAssertEqual(firstResponse?.status, 200)
     }
 }
