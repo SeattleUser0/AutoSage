@@ -63,6 +63,16 @@ This project is built for the "geeks" who want to push the boundaries of what au
 
 Contribute: If you want to dive into the C++ bridges, optimize the Swift concurrency model, or add a new solver to the stack, pull requests are welcome.
 
+The most significant hurdle in autonomous engineering is the bridge between Reasoning and Geometric Constraint.
+
+We are actively looking for contributors to help distill a CAD Operator Model for this stack. The goal is to create a specialized agentic interface that can:
+
+* Understand Parametric Design: Manipulate sketch constraints and feature histories.
+* Iterate via Simulation: Interpret AutoSage solver data (FEA/CFD) and autonomously modify the geometry to optimize performance.
+* Multi-Step Synthesis: Build complex assemblies from high-level functional requirements.
+
+If you have experience in Geometric Deep Learning, Neural Symbolic AI, or CAD Kernel FFI, your input would be invaluable.
+
 Contact: If you’re interested in collaborating or want to discuss how AutoSage can fit into a specific agent-led workflow, please reach out.
 
 Note: When paired with a high-autonomy stack like Open Claw, this tool represents a significant shift from manual engineering to Bobiverse-level engineering.
