@@ -44,11 +44,12 @@ Point your agent framework to the AutoSage endpoint:
 * **API Key:** `local-development` (or as configured)
 
 ---
-
 ## 🏗 Supported Agent Frameworks
-AutoSage is designed to act as the "engineering backend" for:
-* **OpenHands (formerly OpenDevin):** For autonomous software/hardware co-design.
-* **Plandex:** For complex, multi-step engineering project planning.
+AutoSage acts as the "engineering brains" for high-autonomy agents. It is specifically optimized for:
+
+* **Open Claw:** Leverage AutoSage's multi-physics tools for deep-reasoning engineering tasks, allowing the agent to verify designs through real-world physics simulation before finalizing engineering designs.
+* **OpenHands (formerly OpenDevin):** For autonomous software/hardware co-design and iterative prototyping.
+* **Plandex:** For long-running, multi-step engineering project planning that requires validated simulation checkpoints.
 * **Custom Agents:** Any framework using LangChain, Semantic Kernel, or raw OpenAI SDKs.
 
 ---
