@@ -172,6 +172,220 @@ public struct ToolRegistration: Sendable {
     }
 }
 
+private enum ToolDocumentation {
+    static func normalizedDescription(_ raw: String, toolName: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "Executes \(toolName) and returns a normalized tool result."
+        }
+        let lowered = trimmed.lowercased()
+        if lowered == "todo" || lowered == "tbd" {
+            return "Executes \(toolName) and returns a normalized tool result."
+        }
+        return trimmed
+    }
+
+    static func normalizedSchema(_ raw: JSONValue, toolName: String, toolDescription: String) -> JSONValue {
+        guard case .object(let object) = raw else {
+            return JSONSchemaBuilder.schemaObject(
+                title: toolName,
+                description: "Input parameters for \(toolName). No parameters.",
+                properties: [:],
+                required: []
+            )
+        }
+        return .object(normalizeSchemaObject(object, objectPath: [], toolName: toolName, fallbackDescription: toolDescription))
+    }
+
+    private static func normalizeSchemaObject(
+        _ schemaObject: [String: JSONValue],
+        objectPath: [String],
+        toolName: String,
+        fallbackDescription: String
+    ) -> [String: JSONValue] {
+        var normalized = schemaObject
+
+        if asString(normalized["type"]) == nil {
+            normalized["type"] = .string("object")
+        }
+        if isMissingDescription(normalized["description"]) {
+            let fallback = objectPath.isEmpty
+                ? "Input parameters for \(toolName). \(fallbackDescription)"
+                : "Configuration object for \(readablePath(objectPath))."
+            normalized["description"] = .string(fallback.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        if asObject(normalized["properties"]) == nil {
+            normalized["properties"] = .object([:])
+        }
+        if asArray(normalized["required"]) == nil {
+            normalized["required"] = .array([])
+        }
+
+        if let properties = asObject(normalized["properties"]) {
+            var rewritten: [String: JSONValue] = [:]
+            for key in properties.keys.sorted() {
+                let path = objectPath + [key]
+                guard case .object(let propertyObject) = properties[key] else {
+                    rewritten[key] = JSONSchemaBuilder.schemaString(
+                        description: "Value for \(readablePath(path))."
+                    )
+                    continue
+                }
+
+                var normalizedProperty = propertyObject
+                if isMissingDescription(normalizedProperty["description"]) {
+                    normalizedProperty["description"] = .string("Value for \(readablePath(path)).")
+                }
+
+                let propertyType = asString(normalizedProperty["type"])?.lowercased()
+                if propertyType == "object", let nestedProperties = asObject(normalizedProperty["properties"]) {
+                    normalizedProperty["properties"] = .object(
+                        normalizeSchemaProperties(
+                            nestedProperties,
+                            objectPath: path,
+                            toolName: toolName
+                        )
+                    )
+                    if asArray(normalizedProperty["required"]) == nil {
+                        normalizedProperty["required"] = .array([])
+                    }
+                } else if propertyType == "array", case .object(let itemsObject)? = normalizedProperty["items"] {
+                    var normalizedItems = itemsObject
+                    if asString(normalizedItems["type"])?.lowercased() == "object",
+                       let itemProperties = asObject(normalizedItems["properties"]) {
+                        if isMissingDescription(normalizedItems["description"]) {
+                            normalizedItems["description"] = .string("Schema for \(readablePath(path)) items.")
+                        }
+                        normalizedItems["properties"] = .object(
+                            normalizeSchemaProperties(
+                                itemProperties,
+                                objectPath: path + ["item"],
+                                toolName: toolName
+                            )
+                        )
+                        if asArray(normalizedItems["required"]) == nil {
+                            normalizedItems["required"] = .array([])
+                        }
+                        normalizedProperty["items"] = .object(normalizedItems)
+                    }
+                }
+
+                rewritten[key] = .object(normalizedProperty)
+            }
+            normalized["properties"] = .object(rewritten)
+        }
+
+        return normalized
+    }
+
+    private static func normalizeSchemaProperties(
+        _ properties: [String: JSONValue],
+        objectPath: [String],
+        toolName: String
+    ) -> [String: JSONValue] {
+        var wrapped: [String: JSONValue] = [:]
+        for key in properties.keys.sorted() {
+            let path = objectPath + [key]
+            if case .object(let nestedObject) = properties[key] {
+                var normalizedProperty = nestedObject
+                if isMissingDescription(normalizedProperty["description"]) {
+                    normalizedProperty["description"] = .string("Value for \(readablePath(path)).")
+                }
+
+                let propertyType = asString(normalizedProperty["type"])?.lowercased()
+                if propertyType == "object", asObject(normalizedProperty["properties"]) != nil {
+                    normalizedProperty = normalizeSchemaObject(
+                        normalizedProperty,
+                        objectPath: path,
+                        toolName: toolName,
+                        fallbackDescription: "Configuration for \(readablePath(path))."
+                    )
+                } else if propertyType == "array",
+                          case .object(let itemsObject)? = normalizedProperty["items"],
+                          asString(itemsObject["type"])?.lowercased() == "object",
+                          asObject(itemsObject["properties"]) != nil {
+                    var normalizedItems = itemsObject
+                    if isMissingDescription(normalizedItems["description"]) {
+                        normalizedItems["description"] = .string("Schema for \(readablePath(path)) items.")
+                    }
+                    normalizedItems = normalizeSchemaObject(
+                        normalizedItems,
+                        objectPath: path + ["item"],
+                        toolName: toolName,
+                        fallbackDescription: "Schema for \(readablePath(path)) items."
+                    )
+                    normalizedProperty["items"] = .object(normalizedItems)
+                }
+                wrapped[key] = .object(normalizedProperty)
+            } else {
+                wrapped[key] = JSONSchemaBuilder.schemaString(
+                    description: "Value for \(readablePath(path))."
+                )
+            }
+        }
+        return wrapped
+    }
+
+    private static func readablePath(_ path: [String]) -> String {
+        path
+            .filter { !$0.isEmpty }
+            .map { segment in
+                segment
+                    .replacingOccurrences(of: "_", with: " ")
+                    .replacingOccurrences(of: ".", with: " ")
+            }
+            .joined(separator: " ")
+    }
+
+    private static func asObject(_ value: JSONValue?) -> [String: JSONValue]? {
+        guard case .object(let object)? = value else { return nil }
+        return object
+    }
+
+    private static func asString(_ value: JSONValue?) -> String? {
+        guard case .string(let string)? = value else { return nil }
+        return string
+    }
+
+    private static func asArray(_ value: JSONValue?) -> [JSONValue]? {
+        guard case .array(let array)? = value else { return nil }
+        return array
+    }
+
+    private static func isMissingDescription(_ value: JSONValue?) -> Bool {
+        guard let description = asString(value) else { return true }
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        let lowered = trimmed.lowercased()
+        return lowered == "todo" || lowered == "tbd"
+    }
+}
+
+private struct DocumentedTool: Tool {
+    private let base: any Tool
+    public let name: String
+    public let version: String
+    public let description: String
+    public let jsonSchema: JSONValue
+
+    init(base: any Tool) {
+        self.base = base
+        self.name = base.name
+        self.version = base.version
+        let normalizedDescription = ToolDocumentation.normalizedDescription(base.description, toolName: base.name)
+        self.description = normalizedDescription
+        self.jsonSchema = ToolDocumentation.normalizedSchema(
+            base.jsonSchema,
+            toolName: base.name,
+            toolDescription: normalizedDescription
+        )
+    }
+
+    func run(input: JSONValue?, context: ToolExecutionContext) throws -> JSONValue {
+        try base.run(input: input, context: context)
+    }
+}
+
 public struct ToolRegistry {
     public let tools: [String: Tool]
     private let metadataByName: [String: ToolCatalogMetadata]
@@ -180,8 +394,9 @@ public struct ToolRegistry {
         var map: [String: Tool] = [:]
         var metadata: [String: ToolCatalogMetadata] = [:]
         for tool in tools {
-            map[tool.name] = tool
-            metadata[tool.name] = ToolCatalogMetadata(stability: .experimental)
+            let documented = DocumentedTool(base: tool)
+            map[documented.name] = documented
+            metadata[documented.name] = ToolCatalogMetadata(stability: .experimental)
         }
         self.tools = map
         self.metadataByName = metadata
@@ -191,8 +406,9 @@ public struct ToolRegistry {
         var map: [String: Tool] = [:]
         var metadata: [String: ToolCatalogMetadata] = [:]
         for registration in registrations {
-            map[registration.tool.name] = registration.tool
-            metadata[registration.tool.name] = registration.metadata
+            let documented = DocumentedTool(base: registration.tool)
+            map[documented.name] = documented
+            metadata[documented.name] = registration.metadata
         }
         self.tools = map
         self.metadataByName = metadata

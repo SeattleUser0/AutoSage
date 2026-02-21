@@ -63,6 +63,74 @@ final class AutoSageCoreTests: XCTestCase {
         return value!
     }
 
+    private func asObject(_ value: JSONValue?) -> [String: JSONValue]? {
+        guard case .object(let object)? = value else { return nil }
+        return object
+    }
+
+    private func asString(_ value: JSONValue?) -> String? {
+        guard case .string(let string)? = value else { return nil }
+        return string
+    }
+
+    private func asArray(_ value: JSONValue?) -> [JSONValue]? {
+        guard case .array(let array)? = value else { return nil }
+        return array
+    }
+
+    private func isMissingDescription(_ value: JSONValue?) -> Bool {
+        guard let description = asString(value) else { return true }
+        let trimmed = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return true }
+        let normalized = trimmed.lowercased()
+        return normalized == "todo" || normalized == "tbd"
+    }
+
+    private func schemaPropertyAuditIssues(
+        toolName: String,
+        schemaObject: [String: JSONValue],
+        objectPath: String,
+        allowlist: [String: Set<String>]
+    ) -> [String] {
+        guard let properties = asObject(schemaObject["properties"]) else { return [] }
+        var issues: [String] = []
+        let allowedPaths = allowlist[toolName] ?? []
+
+        for key in properties.keys.sorted() {
+            let propertyPath = objectPath.isEmpty ? key : "\(objectPath).\(key)"
+            guard let propertySchema = asObject(properties[key]) else {
+                issues.append("property '\(propertyPath)' schema is not an object")
+                continue
+            }
+
+            if !allowedPaths.contains(propertyPath) && isMissingDescription(propertySchema["description"]) {
+                issues.append("property '\(propertyPath)' missing description")
+            }
+
+            let propertyType = asString(propertySchema["type"])?.lowercased()
+            if propertyType == "object", asObject(propertySchema["properties"]) != nil {
+                issues.append(contentsOf: schemaPropertyAuditIssues(
+                    toolName: toolName,
+                    schemaObject: propertySchema,
+                    objectPath: propertyPath,
+                    allowlist: allowlist
+                ))
+            } else if propertyType == "array",
+                      let itemsSchema = asObject(propertySchema["items"]),
+                      asString(itemsSchema["type"])?.lowercased() == "object",
+                      asObject(itemsSchema["properties"]) != nil {
+                issues.append(contentsOf: schemaPropertyAuditIssues(
+                    toolName: toolName,
+                    schemaObject: itemsSchema,
+                    objectPath: "\(propertyPath)[]",
+                    allowlist: allowlist
+                ))
+            }
+        }
+
+        return issues
+    }
+
     func testRequestIDGeneratorFormatsAndIncrements() {
         let generator = RequestIDGenerator()
         XCTAssertEqual(generator.nextResponseID(), "resp_0001")
@@ -624,6 +692,61 @@ final class AutoSageCoreTests: XCTestCase {
             } else {
                 XCTFail("Tool schema for \(name) should be an object.")
             }
+        }
+    }
+
+    func testAllToolsHaveDescriptionsAndSchemas() {
+        let registry = ToolRegistry.default
+
+        // Escape hatch for properties that are intentionally free-form.
+        // Keep this as small as possible and justify each entry if added.
+        let descriptionAllowlist: [String: Set<String>] = [:]
+
+        var failures: [String] = []
+        for toolName in registry.tools.keys.sorted() {
+            guard let tool = registry.tool(named: toolName) else {
+                failures.append("\(toolName): missing tool registration")
+                continue
+            }
+
+            if isMissingDescription(.string(tool.description)) {
+                failures.append("\(toolName): tool description is missing or placeholder")
+            }
+
+            guard let schema = asObject(tool.jsonSchema) else {
+                failures.append("\(toolName): schema is not a JSON object")
+                continue
+            }
+
+            if asString(schema["type"])?.lowercased() != "object" {
+                failures.append("\(toolName): top-level schema type must be 'object'")
+            }
+            if isMissingDescription(schema["description"]) {
+                failures.append("\(toolName): top-level schema description is missing")
+            }
+            if asObject(schema["properties"]) == nil {
+                failures.append("\(toolName): top-level schema properties object is missing")
+            }
+            if asArray(schema["required"]) == nil {
+                failures.append("\(toolName): top-level schema required array is missing")
+            }
+
+            let propertyIssues = schemaPropertyAuditIssues(
+                toolName: toolName,
+                schemaObject: schema,
+                objectPath: "",
+                allowlist: descriptionAllowlist
+            )
+            failures.append(contentsOf: propertyIssues.map { "\(toolName): \($0)" })
+        }
+
+        if !failures.isEmpty {
+            XCTFail(
+                """
+                Tool metadata/schema audit failed (\(failures.count) issue(s)):
+                - \(failures.joined(separator: "\n- "))
+                """
+            )
         }
     }
 

@@ -1,5 +1,8 @@
 # AutoSage Tools Contract
 
+All tools provide JSON Schema input documentation via `/v1/tools`.
+Stable tools have the highest-quality schemas; experimental tools are best-effort but non-empty.
+
 ## Stability Levels
 - `stable`: supported for integrations and expected to remain backward-compatible.
 - `experimental`: available for evaluation; request/response behavior may change.
