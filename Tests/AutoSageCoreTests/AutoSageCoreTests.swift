@@ -968,28 +968,15 @@ final class AutoSageCoreTests: XCTestCase {
         XCTAssertTrue(yaml.contains("#/components/schemas/ToolResult"), "ToolResult schema reference is missing.")
     }
 
-    func testOpenAPIYamlAndJSONShareCoreInvariants() throws {
-        let yaml = try readTextFile(at: "openapi/openapi.yaml")
-        let jsonText = try readTextFile(at: "openapi/openapi.json")
-        let jsonData = Data(jsonText.utf8)
-        let jsonObject = try XCTUnwrap(try JSONSerialization.jsonObject(with: jsonData) as? [String: Any])
-
-        let yamlVersion = try XCTUnwrap(yamlRootValue(for: "openapi", in: yaml))
-        let yamlTitle = try XCTUnwrap(yamlInfoValue(for: "title", in: yaml))
-        let yamlInfoVersion = try XCTUnwrap(yamlInfoValue(for: "version", in: yaml))
-
-        let jsonVersion = try XCTUnwrap(jsonObject["openapi"] as? String)
-        let jsonInfo = try XCTUnwrap(jsonObject["info"] as? [String: Any])
-        let jsonTitle = try XCTUnwrap(jsonInfo["title"] as? String)
-        let jsonInfoVersion = try XCTUnwrap(jsonInfo["version"] as? String)
-        let jsonPaths = try XCTUnwrap(jsonObject["paths"] as? [String: Any])
-
-        XCTAssertEqual(yamlVersion, jsonVersion)
-        XCTAssertEqual(yamlTitle, jsonTitle)
-        XCTAssertEqual(yamlInfoVersion, jsonInfoVersion)
-        XCTAssertNotNil(jsonPaths["/healthz"])
-        XCTAssertNotNil(jsonPaths["/v1/tools"])
-        XCTAssertNotNil(jsonPaths["/v1/tools/execute"])
+    func testOpenAPIYamlIsOnlyCommittedSpecSource() throws {
+        let root = try repositoryRootURL()
+        let yamlPath = root.appendingPathComponent("openapi/openapi.yaml").path
+        let jsonPath = root.appendingPathComponent("openapi/openapi.json").path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: yamlPath))
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: jsonPath),
+            "Do not commit openapi/openapi.json; openapi/openapi.yaml is the only repository source of truth."
+        )
     }
 
     func testProfessionalFilesHaveReasonableLineLengths() throws {

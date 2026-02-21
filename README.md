@@ -97,7 +97,8 @@ curl -s http://127.0.0.1:8080/v1/chat/completions \
 ```
 
 ## OpenAPI
-YAML is the source of truth at `openapi/openapi.yaml`. JSON form is available at `openapi/openapi.json`.
+Source of truth: `openapi/openapi.yaml`.
+The server serves both `/openapi.yaml` and `/openapi.json`.
 
 ### `GET /openapi.yaml`
 ```bash
