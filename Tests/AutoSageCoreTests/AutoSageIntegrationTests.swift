@@ -367,10 +367,15 @@ final class AutoSageIntegrationTests: XCTestCase {
         let tools = try JSONCoding.makeDecoder().decode(PublicToolsResponse.self, from: toolsResponse.body)
         XCTAssertFalse(tools.tools.isEmpty)
         XCTAssertEqual(tools.tools.map(\.name), tools.tools.map(\.name).sorted())
+        for descriptor in tools.tools {
+            XCTAssertFalse(descriptor.version.isEmpty)
+            XCTAssertTrue(["stable", "experimental", "deprecated"].contains(descriptor.stability.rawValue))
+        }
         guard let echo = tools.tools.first(where: { $0.name == "echo_json" }) else {
             return XCTFail("echo_json not found in /v1/tools output.")
         }
         XCTAssertFalse(echo.description.isEmpty)
+        XCTAssertEqual(echo.stability, .stable)
         guard case .object = echo.inputSchema else {
             return XCTFail("echo_json input_schema should be an object.")
         }
@@ -409,6 +414,26 @@ final class AutoSageIntegrationTests: XCTestCase {
         }
         XCTAssertEqual(output["message"], .string("hello"))
         XCTAssertEqual(output["repeat"], .stringArray(["hello", "hello"]))
+    }
+
+    func testToolsEndpointSupportsStabilityAndTagFiltering() throws {
+        let router = Router()
+
+        let stableResponse = router.handle(HTTPRequest(method: "GET", path: "/v1/tools?stability=stable", body: nil))
+        XCTAssertEqual(stableResponse.status, 200)
+        let stableTools = try JSONCoding.makeDecoder().decode(PublicToolsResponse.self, from: stableResponse.body)
+        let stableNames = stableTools.tools.map(\.name)
+        XCTAssertEqual(stableNames, ["echo_json", "write_text_artifact"])
+        for tool in stableTools.tools {
+            XCTAssertEqual(tool.stability, .stable)
+        }
+
+        let taggedResponse = router.handle(HTTPRequest(method: "GET", path: "/v1/tools?tags=artifact,pde", body: nil))
+        XCTAssertEqual(taggedResponse.status, 200)
+        let taggedTools = try JSONCoding.makeDecoder().decode(PublicToolsResponse.self, from: taggedResponse.body)
+        XCTAssertTrue(taggedTools.tools.contains(where: { $0.name == "write_text_artifact" }))
+        XCTAssertTrue(taggedTools.tools.contains(where: { $0.tags?.contains("pde") == true }))
+        XCTAssertEqual(taggedTools.tools.map(\.name), taggedTools.tools.map(\.name).sorted())
     }
 
     func testExecuteEndpointReturnsToolResultContractOnErrors() throws {

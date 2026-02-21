@@ -58,7 +58,7 @@ public struct Router {
             let response = HealthResponse(status: "ok", name: "AutoSage", version: "0.1.0")
             return jsonResponse(response)
         case ("GET", "/v1/tools"):
-            return handleListTools()
+            return handleListTools(request)
         case ("GET", "/admin"):
             return htmlResponse(AdminDashboard.html)
         case ("GET", "/v1/agent/config"):
@@ -100,12 +100,42 @@ public struct Router {
         return jsonResponse(payload)
     }
 
-    private func handleListTools() -> HTTPResponse {
-        let descriptors = registry.tools.values
-            .map {
-                PublicToolDescriptor(name: $0.name, description: $0.description, inputSchema: $0.jsonSchema)
+    private func handleListTools(_ request: HTTPRequest) -> HTTPResponse {
+        let query = queryParameters(request.path)
+        let stabilityFilter: ToolStability?
+        if let rawStability = query["stability"], !rawStability.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let parsed = ToolStability(rawValue: rawStability.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) else {
+                return errorResponse(
+                    code: "invalid_request",
+                    message: "Invalid stability query value.",
+                    status: 400,
+                    details: [
+                        "field": .string("stability"),
+                        "accepted": .stringArray(["stable", "experimental", "deprecated"])
+                    ]
+                )
             }
-            .sorted { $0.name < $1.name }
+            stabilityFilter = parsed
+        } else {
+            stabilityFilter = nil
+        }
+        let tagsFilter = query["tags"]?
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+
+        let descriptors = registry
+            .listTools(stability: stabilityFilter, tags: tagsFilter)
+            .map { entry in
+                PublicToolDescriptor(
+                    name: entry.tool.name,
+                    version: entry.metadata.version,
+                    stability: entry.metadata.stability,
+                    tags: entry.metadata.tags.isEmpty ? nil : entry.metadata.tags,
+                    description: entry.tool.description,
+                    inputSchema: entry.tool.jsonSchema
+                )
+            }
         return jsonResponse(PublicToolsResponse(tools: descriptors))
     }
 

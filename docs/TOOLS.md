@@ -1,17 +1,47 @@
 # AutoSage Tools Contract
 
-## Stability levels
-- Stable:
+## Stability Levels
+- `stable`: supported for integrations and expected to remain backward-compatible.
+- `experimental`: available for evaluation; request/response behavior may change.
+- `deprecated`: available for compatibility only and scheduled for removal.
+
+## Stable Tool Set
 - `echo_json`
 - `write_text_artifact`
-- Experimental:
-- Other tools in `ToolRegistry.default` may change while integrations harden.
 
-## Naming conventions
-- Prefer lowercase snake_case names (example: `echo_json`).
-- Dotted names are allowed for compatibility with existing integrations (example: `circuits.simulate`).
+## Tool Naming Conventions
+- Prefer lower snake_case IDs (example: `echo_json`).
+- Category prefixes are encouraged for new tools: `mesh_`, `pde_`, `em_`, `io_`, `util_`.
+- Existing IDs using dotted compatibility names (example: `circuits.simulate`) remain valid.
+- Do not rename a shipped tool ID. Mark old tools `deprecated` and introduce a new ID.
 
-## ToolResult JSON schema
+## `/v1/tools` Schema
+`GET /v1/tools` returns a deterministic, name-sorted list. Optional filters:
+- `?stability=stable|experimental|deprecated`
+- `?tags=tag_a,tag_b` (match any tag)
+
+Example item:
+
+```json
+{
+  "name": "echo_json",
+  "version": "1",
+  "stability": "stable",
+  "tags": ["deterministic", "util"],
+  "description": "Echoes a message deterministically and optionally repeats it n times.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "message": { "type": "string" },
+      "n": { "type": "integer", "minimum": 1, "maximum": 64 }
+    },
+    "required": ["message"],
+    "additionalProperties": false
+  }
+}
+```
+
+## ToolResult JSON Schema
 `POST /v1/tools/execute` always returns this shape (including error responses):
 
 ```json
@@ -37,15 +67,15 @@
 }
 ```
 
-## Truncation and limits
-- Execution limits come from `ToolExecutionLimits`.
+## Truncation Metrics
+- Execution limits are applied from `ToolExecutionLimits`.
 - If stdout/stderr are truncated, the response includes:
 - `metrics.stdout_truncated_bytes`
 - `metrics.stderr_truncated_bytes`
-- Summary text is capped and appends a limits note when truncation/removal occurs.
+- The `summary` is capped and includes a `limits:` note when truncation/removal occurs.
 
-## Artifact URL rules
+## Artifact URL Rules
 - Artifact URLs are job-scoped:
 - `/v1/jobs/<job_id>/artifacts/<artifact_name>`
 - `artifact_name` is URL-encoded when needed.
-- Paths are deterministic and stable for a given job ID and artifact name.
+- Paths are deterministic for a given job ID and artifact name.

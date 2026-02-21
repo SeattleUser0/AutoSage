@@ -385,19 +385,41 @@ public struct AdminLogsResponse: Codable, Equatable, Sendable {
     }
 }
 
+public enum ToolStability: String, Codable, Equatable, Sendable {
+    case stable
+    case experimental
+    case deprecated
+}
+
 public struct PublicToolDescriptor: Codable, Equatable, Sendable {
     public let name: String
+    public let version: String
+    public let stability: ToolStability
+    public let tags: [String]?
     public let description: String
     public let inputSchema: JSONValue
 
     enum CodingKeys: String, CodingKey {
         case name
+        case version
+        case stability
+        case tags
         case description
         case inputSchema = "input_schema"
     }
 
-    public init(name: String, description: String, inputSchema: JSONValue) {
+    public init(
+        name: String,
+        version: String,
+        stability: ToolStability,
+        tags: [String]?,
+        description: String,
+        inputSchema: JSONValue
+    ) {
         self.name = name
+        self.version = version
+        self.stability = stability
+        self.tags = tags
         self.description = description
         self.inputSchema = inputSchema
     }

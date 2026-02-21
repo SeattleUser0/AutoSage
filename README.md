@@ -2,6 +2,12 @@
 
 AutoSage is a Swift HTTP server that exposes OpenAI-compatible routes and a minimal tool execution API. Today it supports health checks, OpenAI-style `responses` and `chat/completions` stubs, tool discovery, and deterministic tool execution through `echo_json` and `write_text_artifact`.
 
+The stable integration surface is currently:
+- `echo_json`
+- `write_text_artifact`
+
+All other tools in `/v1/tools` are published as experimental metadata and may change as solver integrations harden.
+
 ## Quickstart
 ```bash
 cd "/Users/jeremiahconner/Documents/CodeX Projects/AutoSage"
@@ -20,6 +26,12 @@ curl -s http://127.0.0.1:8080/healthz
 ### `GET /v1/tools`
 ```bash
 curl -s http://127.0.0.1:8080/v1/tools
+```
+
+Optional filters:
+```bash
+curl -s "http://127.0.0.1:8080/v1/tools?stability=stable"
+curl -s "http://127.0.0.1:8080/v1/tools?tags=artifact,pde"
 ```
 
 ### `POST /v1/tools/execute` (success path)
@@ -83,7 +95,7 @@ curl -s http://127.0.0.1:8080/v1/chat/completions \
 ```
 
 ## Tooling
-Tool stability and the normalized ToolResult contract are documented in `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/docs/TOOLS.md`.
+Tool naming, stability levels, and the normalized ToolResult contract are documented in `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/docs/TOOLS.md`.
 
 ## Roadmap
 - Expand stable tool set beyond `echo_json` and `write_text_artifact`.

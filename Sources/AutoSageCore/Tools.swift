@@ -143,56 +143,130 @@ public protocol Tool: Sendable {
     func run(input: JSONValue?, context: ToolExecutionContext) throws -> JSONValue
 }
 
+public struct ToolCatalogMetadata: Codable, Equatable, Sendable {
+    public let stability: ToolStability
+    public let version: String
+    public let tags: [String]
+
+    public init(stability: ToolStability, version: String = "1", tags: [String] = []) {
+        self.stability = stability
+        let trimmedVersion = version.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.version = trimmedVersion.isEmpty ? "1" : trimmedVersion
+        self.tags = Array(
+            Set(
+                tags
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                    .filter { !$0.isEmpty }
+            )
+        ).sorted()
+    }
+}
+
+public struct ToolRegistration: Sendable {
+    public let tool: Tool
+    public let metadata: ToolCatalogMetadata
+
+    public init(tool: Tool, metadata: ToolCatalogMetadata) {
+        self.tool = tool
+        self.metadata = metadata
+    }
+}
+
 public struct ToolRegistry {
     public let tools: [String: Tool]
+    private let metadataByName: [String: ToolCatalogMetadata]
 
     public init(tools: [Tool]) {
         var map: [String: Tool] = [:]
+        var metadata: [String: ToolCatalogMetadata] = [:]
         for tool in tools {
             map[tool.name] = tool
+            metadata[tool.name] = ToolCatalogMetadata(stability: .experimental)
         }
         self.tools = map
+        self.metadataByName = metadata
+    }
+
+    public init(registrations: [ToolRegistration]) {
+        var map: [String: Tool] = [:]
+        var metadata: [String: ToolCatalogMetadata] = [:]
+        for registration in registrations {
+            map[registration.tool.name] = registration.tool
+            metadata[registration.tool.name] = registration.metadata
+        }
+        self.tools = map
+        self.metadataByName = metadata
     }
 
     public func tool(named name: String) -> Tool? {
         tools[name]
     }
 
-    public static let `default` = ToolRegistry(tools: [
-        EchoJSONTool(),
-        WriteTextArtifactTool(),
-        FEATool(),
-        CFDTool(),
-        StokesTool(),
-        AdvectionTool(),
-        DPGLaplaceTool(),
-        CompressibleFlowTool(),
-        AcousticsTool(),
-        EigenvalueTool(),
-        StructuralModalTool(),
-        HeatTool(),
-        JouleHeatingTool(),
-        HyperelasticityTool(),
-        ElastodynamicsTool(),
-        TransientEMTool(),
-        MagnetostaticsTool(),
-        ElectrostaticsTool(),
-        AMRLaplaceTool(),
-        AnisotropicDiffusionTool(),
-        FractionalPDETool(),
-        SurfacePDETool(),
-        ElectromagneticModalTool(),
-        ElectromagneticScatteringTool(),
-        ElectromagneticsTool(),
-        DarcyTool(),
-        IncompressibleElasticityTool(),
-        VolumeMeshQuartetTool(),
-        RenderPackVTKTool(),
-        DslFitOpen3DTool(),
-        MeshRepairPMPTool(),
-        CadImportTruckTool(),
-        CircuitSimulateNgspiceTool(),
-        CircuitsSimulateTool()
+    public func metadata(named name: String) -> ToolCatalogMetadata? {
+        metadataByName[name]
+    }
+
+    public func listTools(stability: ToolStability? = nil, tags: [String] = []) -> [(tool: Tool, metadata: ToolCatalogMetadata)] {
+        let normalizedTags = Set(
+            tags
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+        )
+        return tools.keys.sorted().compactMap { name in
+            guard let tool = tools[name], let metadata = metadataByName[name] else {
+                return nil
+            }
+            if let stability, metadata.stability != stability {
+                return nil
+            }
+            if !normalizedTags.isEmpty && Set(metadata.tags).isDisjoint(with: normalizedTags) {
+                return nil
+            }
+            return (tool, metadata)
+        }
+    }
+
+    public static let `default` = ToolRegistry(registrations: [
+        ToolRegistration(
+            tool: EchoJSONTool(),
+            metadata: ToolCatalogMetadata(stability: .stable, version: "1", tags: ["util", "deterministic"])
+        ),
+        ToolRegistration(
+            tool: WriteTextArtifactTool(),
+            metadata: ToolCatalogMetadata(stability: .stable, version: "1", tags: ["io", "artifact", "deterministic"])
+        ),
+        ToolRegistration(tool: FEATool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "fea"])),
+        ToolRegistration(tool: CFDTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "cfd"])),
+        ToolRegistration(tool: StokesTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "cfd"])),
+        ToolRegistration(tool: AdvectionTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "cfd"])),
+        ToolRegistration(tool: DPGLaplaceTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: CompressibleFlowTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "cfd"])),
+        ToolRegistration(tool: AcousticsTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: EigenvalueTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: StructuralModalTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "fea"])),
+        ToolRegistration(tool: HeatTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: JouleHeatingTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: HyperelasticityTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "fea"])),
+        ToolRegistration(tool: ElastodynamicsTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "fea"])),
+        ToolRegistration(tool: TransientEMTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: MagnetostaticsTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: ElectrostaticsTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: AMRLaplaceTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "mesh"])),
+        ToolRegistration(tool: AnisotropicDiffusionTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: FractionalPDETool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: SurfacePDETool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde"])),
+        ToolRegistration(tool: ElectromagneticModalTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: ElectromagneticScatteringTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: ElectromagneticsTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "em"])),
+        ToolRegistration(tool: DarcyTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "cfd"])),
+        ToolRegistration(tool: IncompressibleElasticityTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["pde", "fea"])),
+        ToolRegistration(tool: VolumeMeshQuartetTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["mesh", "io"])),
+        ToolRegistration(tool: RenderPackVTKTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["render", "io"])),
+        ToolRegistration(tool: DslFitOpen3DTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["mesh", "io"])),
+        ToolRegistration(tool: MeshRepairPMPTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["mesh", "io"])),
+        ToolRegistration(tool: CadImportTruckTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["cad", "io"])),
+        ToolRegistration(tool: CircuitSimulateNgspiceTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["circuit", "io"])),
+        ToolRegistration(tool: CircuitsSimulateTool(), metadata: ToolCatalogMetadata(stability: .experimental, version: "1", tags: ["circuit"]))
     ])
 }
 
