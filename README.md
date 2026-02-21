@@ -20,6 +20,14 @@ AutoSage is built for engineers who design physical systems. It moves beyond "so
 
 ---
 
+## 🌐 Large-Scale Orchestration
+AutoSage is architected for distributed environments. By deploying as a cluster, it enables:
+* **Asynchronous Parallelism:** Offload thousands of simultaneous solver tasks via the agentic layer.
+* **Agent-Directed Branching:** Use the Open Claw stack to dynamically allocate nodes for Monte Carlo simulations or wide-band evolutionary design optimization.
+* **Massive Cloud Capacity:** Built to scale from a single Mac Pro to 10,000+ Linux nodes for "freakish" computational power.
+
+---
+
 ## 🚀 Getting Started
 
 ### 1. Prerequisites
