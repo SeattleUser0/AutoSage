@@ -1,0 +1,4 @@
+module COpen3DFFI [system] {
+    header "include/open3d_ffi.h"
+    export *
+}

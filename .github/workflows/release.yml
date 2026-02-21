@@ -1,0 +1,94 @@
+name: AutoSage Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build Release (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Swift (Linux only)
+        if: runner.os == 'Linux'
+        uses: swift-actions/setup-swift@v2
+
+      - name: Install System Dependencies
+        run: |
+          chmod +x ./setup.sh
+          ./setup.sh
+
+      - name: Compile Native Libraries
+        run: |
+          make clean-native
+          make install-native-libs
+
+      - name: Build AutoSageServer (Release)
+        run: swift build -c release --product AutoSageServer
+
+      - name: Stage Release Files
+        run: |
+          set -euo pipefail
+          STAGING_DIR="autosage-release"
+          rm -rf "${STAGING_DIR}"
+          mkdir -p "${STAGING_DIR}/bin" "${STAGING_DIR}/lib" "${STAGING_DIR}/assets" "${STAGING_DIR}/docs"
+
+          cp ".build/release/AutoSageServer" "${STAGING_DIR}/bin/"
+
+          if [ -d "Native/lib" ]; then
+            find "Native/lib" -maxdepth 1 -type f \( -name "*.dylib" -o -name "*.so" -o -name "*.so.*" \) -exec cp -f {} "${STAGING_DIR}/lib/" \;
+          fi
+
+          if [ -d "third_party/ngspice/install/lib" ]; then
+            find "third_party/ngspice/install/lib" -maxdepth 1 -type f -name "libngspice*" -exec cp -f {} "${STAGING_DIR}/lib/" \;
+          fi
+
+          if [ -d "/tmp/autosage-ngspice/install/lib" ]; then
+            find "/tmp/autosage-ngspice/install/lib" -maxdepth 1 -type f -name "libngspice*" -exec cp -f {} "${STAGING_DIR}/lib/" \;
+          fi
+
+          cp -f "README.md" "${STAGING_DIR}/"
+          cp -f "LICENSE" "${STAGING_DIR}/"
+          cp -f "THIRD_PARTY_NOTICES.md" "${STAGING_DIR}/"
+
+          if [ -d "docs" ]; then
+            cp -R "docs/." "${STAGING_DIR}/docs/"
+          fi
+
+          find . -maxdepth 4 -type f \( -name "admin.html" -o -name "manifest.schema.json" -o -name "*manifest*.schema.json" \) -exec cp -f {} "${STAGING_DIR}/assets/" \; || true
+
+      - name: Archive Release Bundle
+        id: archive
+        run: |
+          set -euo pipefail
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ARCHIVE_NAME="autosage-macos-latest.zip"
+            zip -r "${ARCHIVE_NAME}" "autosage-release"
+          else
+            ARCHIVE_NAME="autosage-linux-latest.tar.gz"
+            tar -czvf "${ARCHIVE_NAME}" "autosage-release"
+          fi
+          echo "archive_name=${ARCHIVE_NAME}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.archive.outputs.archive_name }}

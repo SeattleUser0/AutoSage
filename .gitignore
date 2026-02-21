@@ -1,7 +1,37 @@
+# macOS / editor
 .DS_Store
-/.build
-/Packages
+*.swp
+*.swo
+
+# SwiftPM / Xcode
+/.build/
+/.swiftpm/
+/Packages/
 /*.xcodeproj
 xcuserdata/
 DerivedData/
-.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+
+# Python local env
+.venv/
+.pytest_cache/
+
+# Native builds
+Native/**/build/
+Native/truck_ffi/target/
+third_party/ngspice/
+Native/lib/
+*.o
+*.obj
+*.a
+*.dylib
+*.so
+*.so.*
+
+# Runtime outputs and local workspaces
+runs/
+workspace/autosage/sessions/
+/workspace/autosage/sessions/
+
+# Local config
+.env
+.env.*

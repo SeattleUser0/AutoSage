@@ -1,0 +1,4 @@
+module CNgspiceFFI [system] {
+    header "ngspice_ffi.h"
+    export *
+}

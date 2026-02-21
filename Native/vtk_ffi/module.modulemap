@@ -1,0 +1,4 @@
+module CVTKFFI [system] {
+    header "include/vtk_ffi.h"
+    export *
+}

@@ -1,0 +1,4 @@
+module CPMPFFI [system] {
+    header "pmp_ffi.h"
+    export *
+}

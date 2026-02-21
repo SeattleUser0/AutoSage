@@ -1,0 +1,4 @@
+module CQuartetFFI [system] {
+    header "quartet_ffi.h"
+    export *
+}

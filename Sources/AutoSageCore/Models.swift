@@ -1,6 +1,6 @@
 import Foundation
 
-public struct AutoSageError: Codable, Equatable, Sendable {
+public struct AutoSageError: Error, Codable, Equatable, Sendable {
     public let code: String
     public let message: String
     public let details: [String: JSONValue]?
@@ -32,7 +32,7 @@ public struct HealthResponse: Codable, Equatable {
     }
 }
 
-public struct ToolSpec: Codable, Equatable {
+public struct ToolSpec: Codable, Equatable, Sendable {
     public let type: String?
     public let function: ToolFunction?
 
@@ -42,7 +42,7 @@ public struct ToolSpec: Codable, Equatable {
     }
 }
 
-public struct ToolFunction: Codable, Equatable {
+public struct ToolFunction: Codable, Equatable, Sendable {
     public let name: String
     public let description: String?
     public let parameters: JSONValue?
@@ -246,42 +246,70 @@ public struct ChatCompletionsResponse: Codable, Equatable {
     }
 }
 
+public enum JobRunMode: String, Codable, Equatable, Sendable {
+    case async = "async"
+    case sync = "sync"
+}
+
 public struct CreateJobRequest: Codable, Equatable {
     public let toolName: String
     public let input: JSONValue?
+    public let mode: JobRunMode?
+    public let waitMS: Int?
+    public let limits: ToolExecutionLimits?
 
     enum CodingKeys: String, CodingKey {
         case toolName = "tool_name"
         case input
+        case mode
+        case waitMS = "wait_ms"
+        case limits
     }
 
-    public init(toolName: String, input: JSONValue?) {
+    public init(toolName: String, input: JSONValue?, mode: JobRunMode?, waitMS: Int?, limits: ToolExecutionLimits?) {
         self.toolName = toolName
         self.input = input
+        self.mode = mode
+        self.waitMS = waitMS
+        self.limits = limits
     }
 }
 
 public struct CreateJobResponse: Codable, Equatable {
     public let jobID: String
     public let status: JobStatus
+    public let job: JobRecord?
 
     enum CodingKeys: String, CodingKey {
         case jobID = "job_id"
         case status
+        case job
     }
 
-    public init(jobID: String, status: JobStatus) {
+    public init(jobID: String, status: JobStatus, job: JobRecord? = nil) {
         self.jobID = jobID
         self.status = status
+        self.job = job
     }
 }
 
 public struct JobArtifactFile: Codable, Equatable, Sendable {
     public let name: String
+    public let path: String
+    public let mimeType: String
     public let bytes: Int
 
-    public init(name: String, bytes: Int) {
+    enum CodingKeys: String, CodingKey {
+        case name
+        case path
+        case mimeType = "mime_type"
+        case bytes
+    }
+
+    public init(name: String, path: String, mimeType: String, bytes: Int) {
         self.name = name
+        self.path = path
+        self.mimeType = mimeType
         self.bytes = bytes
     }
 }
@@ -298,5 +326,61 @@ public struct JobArtifactsResponse: Codable, Equatable, Sendable {
     public init(jobID: String, files: [JobArtifactFile]) {
         self.jobID = jobID
         self.files = files
+    }
+}
+
+public struct AdminClearJobsResponse: Codable, Equatable, Sendable {
+    public let status: String
+    public let deletedJobs: Int
+    public let reclaimedBytes: Int64
+    public let reclaimedHuman: String
+    public let sessionsRoot: String
+    public let message: String
+    public let timestamp: Date
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case deletedJobs = "deleted_jobs"
+        case reclaimedBytes = "reclaimed_bytes"
+        case reclaimedHuman = "reclaimed_human"
+        case sessionsRoot = "sessions_root"
+        case message
+        case timestamp
+    }
+
+    public init(
+        status: String,
+        deletedJobs: Int,
+        reclaimedBytes: Int64,
+        reclaimedHuman: String,
+        sessionsRoot: String,
+        message: String,
+        timestamp: Date
+    ) {
+        self.status = status
+        self.deletedJobs = deletedJobs
+        self.reclaimedBytes = reclaimedBytes
+        self.reclaimedHuman = reclaimedHuman
+        self.sessionsRoot = sessionsRoot
+        self.message = message
+        self.timestamp = timestamp
+    }
+}
+
+public struct AdminLogsResponse: Codable, Equatable, Sendable {
+    public let lines: [String]
+    public let count: Int
+    public let generatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case lines
+        case count
+        case generatedAt = "generated_at"
+    }
+
+    public init(lines: [String], count: Int, generatedAt: Date) {
+        self.lines = lines
+        self.count = count
+        self.generatedAt = generatedAt
     }
 }

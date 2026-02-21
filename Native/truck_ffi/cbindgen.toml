@@ -1,0 +1,18 @@
+language = "C"
+pragma_once = true
+include_guard = "TRUCK_FFI_H"
+usize_is_size_t = true
+cpp_compat = true
+documentation = true
+sort_by = "Name"
+
+[parse]
+parse_deps = false
+
+[export]
+include = [
+  "TruckErrorCode",
+  "TruckMeshResult",
+  "truck_load_step",
+  "truck_free_result",
+]

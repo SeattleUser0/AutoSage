@@ -1,0 +1,19 @@
+[package]
+name = "truck_ffi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+build = "build.rs"
+
+[lib]
+name = "truck_ffi"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+ruststep = "0.4.0"
+truck-stepio = "0.3.0"
+truck-modeling = "0.6.0"
+truck-meshalgo = "0.4.0"
+truck-polymesh = "0.6.0"
+truck-topology = "0.6.0"

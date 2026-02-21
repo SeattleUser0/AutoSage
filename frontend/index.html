@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AutoSage Workbench</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>AutoSage Workbench</h1>
+          <p>Session-aware orchestration UI with live stream telemetry</p>
+        </div>
+      </header>
+
+      <section class="controls">
+        <label>
+          API Base
+          <input id="api-base" type="url" value="http://127.0.0.1:8080" />
+        </label>
+
+        <form id="upload-form" class="inline-form">
+          <label>
+            Create Session
+            <input id="upload-input" type="file" accept=".step,.stp,.json,.obj,.stl,.glb,.gltf" />
+          </label>
+          <button type="submit">Upload + Create</button>
+        </form>
+
+        <div class="inline-form">
+          <label>
+            Session ID
+            <input id="session-id" type="text" placeholder="session_..." />
+          </label>
+          <button id="load-session" type="button">Load Session</button>
+        </div>
+      </section>
+
+      <div id="error-banner" class="error-banner" hidden></div>
+
+      <main class="layout-grid">
+        <section class="panel chat-panel">
+          <header class="panel-header">
+            <h2>Chat and Orchestration</h2>
+          </header>
+
+          <div id="activity" class="activity"></div>
+          <div id="message-feed" class="message-feed"></div>
+
+          <form id="chat-form" class="chat-form">
+            <textarea
+              id="chat-input"
+              rows="3"
+              placeholder="Ask the orchestration agent to update geometry, run solvers, or generate renders"
+            ></textarea>
+            <button id="send-button" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section class="panel viewport-panel">
+          <header class="panel-header">
+            <h2>3D Viewport</h2>
+          </header>
+          <div id="viewport-host" class="viewport-host"></div>
+
+          <h3>Render Gallery</h3>
+          <div id="render-gallery" class="render-gallery"></div>
+        </section>
+
+        <section class="panel manifest-panel">
+          <header class="panel-header">
+            <h2>Manifest and Assets</h2>
+          </header>
+
+          <h3>Summary</h3>
+          <dl id="manifest-summary" class="manifest-summary"></dl>
+
+          <h3>Assets</h3>
+          <ul id="asset-list" class="asset-list"></ul>
+
+          <h3>Metadata</h3>
+          <ul id="metadata-list" class="metadata-list"></ul>
+
+          <h3>Raw manifest.json</h3>
+          <pre id="manifest-raw" class="manifest-raw"></pre>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

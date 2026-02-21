@@ -1,0 +1,4 @@
+module CTruckFFI [system] {
+    header "include/truck_ffi.h"
+    export *
+}

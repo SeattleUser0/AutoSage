@@ -47,6 +47,14 @@ public final class RequestIDGenerator {
         return formattedID(prefix: "job", value: jobCounter)
     }
 
+    public func seedJobCounterIfHigher(_ value: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        if value > jobCounter {
+            jobCounter = value
+        }
+    }
+
     private func formattedID(prefix: String, value: Int) -> String {
         return String(format: "\(prefix)_%04d", value)
     }
