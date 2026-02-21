@@ -1,97 +1,96 @@
-# AutoSage 🧙‍♂️⚙️
+# AutoSage
 
-**AutoSage** is a high-performance, multi-physics simulation server designed specifically for **LLM Agent workflows**. It transforms complex engineering tasks—ranging from structural analysis (FEA) to fluid dynamics (CFD) and circuit simulation—into a standardized API that autonomous agents can navigate natively.
+AutoSage is a Swift HTTP server that exposes OpenAI-compatible routes and a minimal tool execution API. Today it supports health checks, OpenAI-style `responses` and `chat/completions` stubs, tool discovery, and deterministic tool execution through `echo_json` and `write_text_artifact`.
 
-## 🌟 The Core Philosophy
-Traditional simulation software requires a human-in-the-loop to click buttons and manage mesh files. **AutoSage** runs as a standalone server with an **OpenAI-compatible interface**, allowing agents like **OpenClaw**, **OpenHands**, **Plandex**, or custom GPT-based orchestrators to:
-1.  **Generate** geometry through code.
-2.  **Execute** multi-physics simulations via tool-calling.
-3.  **Analyze** results using real-time SSE (Server-Sent Events) feedback.
-
----
-
-## 🛠 Key Features for Real-World Engineering
-AutoSage is built for engineers who design physical systems. It moves beyond "software logic" into high-fidelity physical simulation:
-
-* **Multiphysics Solver Suite:** Directly interfaces with C++ kernels to solve real-world problems in structural integrity, heat transfer, and fluid dynamics.
-* **FEA/FEM/CFD Integration:** Native FFI bridges to **MFEM** and **Open3D** for high-order analysis and geometric validation.
-* **Electronic Systems Simulation:** Full **ngspice** integration for analog circuit validation and power system design.
-* **Agent-Operated Hardware Design:** Specifically built for agents like **Open Claw** to perform autonomous validation of mechanical assemblies and structural load cases.
-
----
-
-## 🌐 Large-Scale Orchestration
-AutoSage is architected for distributed environments. By deploying as a cluster, it enables:
-* **Asynchronous Parallelism:** Offload thousands of simultaneous solver tasks via the agentic layer.
-* **Agent-Directed Branching:** Use the OpenClaw stack to dynamically allocate nodes for Monte Carlo simulations or wide-band evolutionary design optimization.
-* **Massive Cloud Capacity:** Built to scale from a single Mac Pro to 10,000+ Linux nodes for "freakish" computational power.
-
----
-
-## 🚀 Getting Started
-
-### 1. Prerequisites
-Ensure you have the required native libraries installed. We provide a universal setup script for both macOS and Linux:
+## Quickstart
 ```bash
-chmod +x setup.sh
-./setup.sh
+cd "/Users/jeremiahconner/Documents/CodeX Projects/AutoSage"
+swift build
+swift run AutoSageServer --host 127.0.0.1 --port 8080
 ```
 
-### 2. Build & Run
-Compile the backend server:
+## API
+All examples assume the server is running on `127.0.0.1:8080`.
+
+### `GET /healthz`
 ```bash
-swift build -c release
-swift run AutoSageServer --port 8080
+curl -s http://127.0.0.1:8080/healthz
 ```
 
-### 3. Connect Your Agent
-Point your agent framework to the AutoSage endpoint:
-* **Base URL:** `http://localhost:8080/v1`
-* **API Key:** `local-development` (or as configured)
+### `GET /v1/tools`
+```bash
+curl -s http://127.0.0.1:8080/v1/tools
+```
 
----
-## 🏗 Supported Agent Frameworks
-AutoSage acts as the "engineering brains" for high-autonomy agents. It is specifically optimized for:
+### `POST /v1/tools/execute` (success path)
+```bash
+curl -s http://127.0.0.1:8080/v1/tools/execute \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tool": "echo_json",
+    "input": {
+      "message": "hello",
+      "n": 2
+    }
+  }'
+```
 
-* **Open Claw:** Leverage AutoSage's multi-physics tools for deep-reasoning engineering tasks, allowing the agent to verify designs through real-world physics simulation before finalizing engineering designs.
-* **OpenHands (formerly OpenDevin):** For autonomous software/hardware co-design and iterative prototyping.
-* **Plandex:** For long-running, multi-step engineering project planning that requires validated simulation checkpoints.
-* **Custom Agents:** Any framework using LangChain, Semantic Kernel, or raw OpenAI SDKs.
+### `POST /v1/tools/execute` (artifact path)
+```bash
+curl -s http://127.0.0.1:8080/v1/tools/execute \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tool": "write_text_artifact",
+    "input": {
+      "filename": "note.txt",
+      "text": "artifact demo"
+    }
+  }'
+```
 
----
-## 🛠 Roadmap & Future Solvers
-AutoSage is an evolving platform. We are committed to expanding the solver library to cover more specialized physics and engineering domains.
+### `POST /v1/tools/execute` (error path still returns ToolResult)
+```bash
+curl -s -i http://127.0.0.1:8080/v1/tools/execute \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "tool": "does.not.exist",
+    "input": {}
+  }'
+```
 
-Regular Updates: Additional solvers (e.g., advanced CFD kernels, thermal radiation models, and topology optimization) will be added on a regular basis. Check back often for new capabilities.
+### `POST /v1/responses`
+```bash
+curl -s http://127.0.0.1:8080/v1/responses \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "autosage-0.1",
+    "input": [
+      { "role": "user", "content": "hello" }
+    ]
+  }'
+```
 
-Custom Integration: If you have a specific use case or a solver you’d like to see prioritized, let’s discuss it.
+### `POST /v1/chat/completions`
+```bash
+curl -s http://127.0.0.1:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "autosage-0.1",
+    "messages": [
+      { "role": "user", "content": "hello" }
+    ]
+  }'
+```
 
-## 🧪 The "Statistical Scout" Pipeline (Future)
-We are working on implementing a multi-stage optimization workflow that prioritizes computational efficiency:
-* **Stage 1: Sparse Sampling:** Use the cluster to generate a sparse Design of Experiments (DOE).
-* **Stage 2: Surrogate Inference:** Utilize **scikit-learn** to build meta-models that allow the agent to explore 10^5 design variations instantly.
-* **Stage 3: Targeted Finalization:** Commit high-fidelity solver resources only to the most promising design candidates identified by the statistical model.
+## Tooling
+Tool stability and the normalized ToolResult contract are documented in `/Users/jeremiahconner/Documents/CodeX Projects/AutoSage/docs/TOOLS.md`.
 
-## 🤝 Community & Contribution
-This project is built for the "geeks" who want to push the boundaries of what autonomous systems can build in the real world.
+## Roadmap
+- Expand stable tool set beyond `echo_json` and `write_text_artifact`.
+- Add more end-to-end HTTP server process tests for additional routes.
+- Tighten per-tool schema validation coverage.
 
-Contribute: If you want to dive into the C++ bridges, optimize the Swift concurrency model, or add a new solver to the stack, pull requests are welcome.
-
-The most significant hurdle in autonomous engineering is the bridge between Reasoning and Geometric Constraint.
-
-We are actively looking for contributors to help distill a CAD Operator Model for this stack. The goal is to create a specialized agentic interface that can:
-
-* Understand Parametric Design: Manipulate sketch constraints and feature histories.
-* Iterate via Simulation: Interpret AutoSage solver data (FEA/CFD) and autonomously modify the geometry to optimize performance.
-* Multi-Step Synthesis: Build complex assemblies from high-level functional requirements.
-
-If you have experience in Geometric Deep Learning, Neural Symbolic AI, or CAD Kernel FFI, your input would be invaluable.
-
-Contact: If you’re interested in collaborating or want to discuss how AutoSage can fit into a specific agent-led workflow, please reach out.
-
-Note: When paired with a high-autonomy stack like OpenClaw, this tool represents a significant shift from manual engineering to Bobiverse-level engineering.
-
----
-
-## 📜 License
-MIT
+## Test
+```bash
+swift test
+```

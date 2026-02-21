@@ -1,40 +1,51 @@
-# AutoSage Tool Catalog and Contract
+# AutoSage Tools Contract
 
-## Stability Levels
-- Stable tools:
+## Stability levels
+- Stable:
 - `echo_json`
 - `write_text_artifact`
-- Experimental tools:
-- Any additional tools in `ToolRegistry.default` are available for development and may evolve.
+- Experimental:
+- Other tools in `ToolRegistry.default` may change while integrations harden.
 
-## Naming Convention
-- Use lowercase snake_case for standalone tools (for example `echo_json`).
-- Domain-scoped tools may use dotted names (for example `circuits.simulate`) for compatibility.
+## Naming conventions
+- Prefer lowercase snake_case names (example: `echo_json`).
+- Dotted names are allowed for compatibility with existing integrations (example: `circuits.simulate`).
 
-## ToolResult Contract
-All tool executions returned by `POST /v1/tools/execute` conform to the normalized JSON contract:
+## ToolResult JSON schema
+`POST /v1/tools/execute` always returns this shape (including error responses):
 
 ```json
 {
   "status": "ok|error",
-  "solver": "tool_or_solver_name",
-  "summary": "short human-readable summary",
+  "solver": "string",
+  "summary": "string",
   "stdout": "string",
   "stderr": "string",
   "exit_code": 0,
   "artifacts": [
     {
-      "name": "file.ext",
-      "path": "/v1/jobs/<job_id>/artifacts/file.ext",
-      "mime_type": "application/octet-stream",
-      "bytes": 123
+      "name": "string",
+      "path": "/v1/jobs/<job_id>/artifacts/<artifact_name>",
+      "mime_type": "string",
+      "bytes": 0
     }
   ],
-  "metrics": {},
+  "metrics": {
+    "key": "json value"
+  },
   "output": {}
 }
 ```
 
-Notes:
-- `POST /v1/tools/execute` always returns this JSON shape, even for errors.
-- Execution limits from `ToolExecutionLimits` are applied and reported in `metrics` when truncation occurs.
+## Truncation and limits
+- Execution limits come from `ToolExecutionLimits`.
+- If stdout/stderr are truncated, the response includes:
+- `metrics.stdout_truncated_bytes`
+- `metrics.stderr_truncated_bytes`
+- Summary text is capped and appends a limits note when truncation/removal occurs.
+
+## Artifact URL rules
+- Artifact URLs are job-scoped:
+- `/v1/jobs/<job_id>/artifacts/<artifact_name>`
+- `artifact_name` is URL-encoded when needed.
+- Paths are deterministic and stable for a given job ID and artifact name.
