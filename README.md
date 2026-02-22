@@ -2,7 +2,7 @@
 
 [![AutoSage CI](https://github.com/SeattleUser0/AutoSage/actions/workflows/ci.yml/badge.svg)](https://github.com/SeattleUser0/AutoSage/actions/workflows/ci.yml)
 
-AutoSage is a Swift HTTP backend that exposes OpenAI-compatible routes plus a deterministic tool execution loop. The current stable integration surface is `echo_json` and `write_text_artifact`; other tools are available as experimental integrations.
+AutoSage is a local Swift HTTP server that implements OpenAI-compatible endpoints and a deterministic tool-execution loop, designed to be used by agent systems like OpenClaw (or any client that can call OpenAI-style tools). It runs tools on the host, returns normalized JSON, and persists artifacts (files/logs) for downstream reasoning.
 
 - [Changelog](CHANGELOG.md)
 - [Contributing](CONTRIBUTING.md)
